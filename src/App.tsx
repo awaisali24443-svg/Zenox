@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Menu, Plus, Copy, Send, Trash2, Check, CheckCircle2, XCircle, Terminal } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
-const API_KEY = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+let rawApiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+if (rawApiKey) {
+  rawApiKey = rawApiKey.replace(/\\n/g, '\n').split('\n')[0].trim();
+}
+const API_KEY = rawApiKey;
 
 interface Message {
   role: 'user' | 'assistant';

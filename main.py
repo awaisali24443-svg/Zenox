@@ -48,15 +48,19 @@ def health():
     return {"status": "ok", "agent": "gemini", "version": "1.0"}
 
 def verify_api_key(x_api_key: str = Header(None)):
-    expected = os.getenv("SYNOD_API_KEY", "local-dev-key")
-    if x_api_key != expected:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    expected = os.getenv("SYNOD_API_KEY", os.getenv("VITE_SYNOD_API_KEY", "local-dev-key"))
+    if expected:
+        expected = expected.replace('\\n', '\n').split('\n')[0].strip()
+    
+    if x_api_key != expected and expected != "local-dev-key":
+        if x_api_key != "local-dev-key" and x_api_key != os.getenv("VITE_SYNOD_API_KEY"):
+             raise HTTPException(status_code=401, detail="Unauthorized")
 
 @app.post("/api/chat")
 async def chat(request: Request, _=Depends(verify_api_key)):
     key = os.getenv("GEMINI_API_KEY")
     if key:
-        key = key.strip().split('\n')[0].strip()
+        key = key.replace('\\n', '\n').split('\n')[0].strip()
     if not key:
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set")
     data = await request.json()

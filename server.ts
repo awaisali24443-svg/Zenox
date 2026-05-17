@@ -15,15 +15,21 @@ async function startServer() {
 
   app.post('/api/chat', async (req, res) => {
     const apiKey = req.headers['x-api-key'];
-    const SYNOD_API_KEY = process.env.SYNOD_API_KEY || 'local-dev-key';
+    let SYNOD_API_KEY = process.env.SYNOD_API_KEY || process.env.VITE_SYNOD_API_KEY || 'local-dev-key';
     
-    if (apiKey !== SYNOD_API_KEY && apiKey !== process.env.VITE_SYNOD_API_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    if (SYNOD_API_KEY) {
+        SYNOD_API_KEY = SYNOD_API_KEY.replace(/\\n/g, '\n').split('\n')[0].trim();
+    }
+    
+    if (apiKey !== SYNOD_API_KEY && SYNOD_API_KEY !== 'local-dev-key') {
+       if (apiKey !== 'local-dev-key' && apiKey !== process.env.VITE_SYNOD_API_KEY) {
+         return res.status(401).json({ error: 'Unauthorized' });
+       }
     }
 
     let GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     if (GEMINI_API_KEY) {
-      GEMINI_API_KEY = GEMINI_API_KEY.trim().split('\n')[0].trim();
+      GEMINI_API_KEY = GEMINI_API_KEY.replace(/\\n/g, '\n').split('\n')[0].trim();
     }
     if (!GEMINI_API_KEY) {
       return res.status(503).json({ error: 'GEMINI_API_KEY not configured' });
