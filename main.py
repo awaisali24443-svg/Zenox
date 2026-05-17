@@ -55,20 +55,22 @@ def verify_api_key(x_api_key: str = Header(None)):
 @app.post("/api/chat")
 async def chat(request: Request, _=Depends(verify_api_key)):
     key = os.getenv("GEMINI_API_KEY")
+    if key:
+        key = key.strip().split('\n')[0].strip()
     if not key:
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set")
     data = await request.json()
     
     # Format messages for Gemini API
     # The system instruction is handled separately
-    system_instruction = "You are Zenox, a helpful and intelligent personal AI assistant. Be clear, specific, and genuinely useful."
+    system_instruction = "You are Awais Codex, a helpful and intelligent personal AI assistant. Be clear, specific, and genuinely useful."
     
     contents = []
     for m in data.get("history", []):
         role = "user" if m["role"] == "user" else "model"
-        contents.append(types.Content(role=role, parts=[types.Part.from_text(m["content"])]))
+        contents.append({"role": role, "parts": [{"text": m["content"]}]})
     
-    contents.append(types.Content(role="user", parts=[types.Part.from_text(data.get("message", ""))]))
+    contents.append({"role": "user", "parts": [{"text": data.get("message", "")}]})
     
     client = genai.Client(api_key=key, http_options={'api_version': 'v1alpha'})
     # Use v1alpha for stream if it's more stable, or just default which is v1alpha

@@ -160,7 +160,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      const errorMsg: Message = { role: 'assistant', content: "Error: Could not reach the Zenox backend.", timestamp: Date.now() };
+      const errorMsg: Message = { role: 'assistant', content: "Error: Could not reach the Awais Codex backend.", timestamp: Date.now() };
       const finalMsg = [...newMessages, errorMsg];
       setMessages(finalMsg);
       saveCurrentConversation(finalMsg);
@@ -242,7 +242,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" />
             <div>
-              <h1 className="text-xl font-semibold italic tracking-tight text-white">Zenox</h1>
+              <h1 className="text-xl font-semibold italic tracking-tight text-white">Awais Codex</h1>
               <p className="text-xs text-[#555555] font-medium uppercase tracking-wider mt-0.5">personal AI</p>
             </div>
           </div>
@@ -305,7 +305,7 @@ export default function App() {
           <button onClick={() => setSidebarOpen(true)} className="text-[#a0a0a0] hover:text-white">
             <Menu size={24} />
           </button>
-          <div className="font-semibold italic text-white tracking-tight">Zenox</div>
+          <div className="font-semibold italic text-white tracking-tight">Awais Codex</div>
           <div className="w-6" /> {/* spacer */}
         </header>
 
@@ -385,7 +385,7 @@ export default function App() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Message Zenox..."
+                placeholder="Message Awais Codex..."
                 disabled={isLoading}
                 rows={1}
                 className="w-full max-h-[200px] min-h-[44px] sm:min-h-[52px] bg-transparent resize-none outline-none py-3 sm:py-3.5 px-4 text-[#f0f0f0] placeholder:text-[#555555] disabled:opacity-50"

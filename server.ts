@@ -21,7 +21,10 @@ async function startServer() {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    let GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    if (GEMINI_API_KEY) {
+      GEMINI_API_KEY = GEMINI_API_KEY.trim().split('\n')[0].trim();
+    }
     if (!GEMINI_API_KEY) {
       return res.status(503).json({ error: 'GEMINI_API_KEY not configured' });
     }
@@ -40,7 +43,7 @@ async function startServer() {
         model: 'gemini-2.5-flash',
         contents,
         config: {
-          systemInstruction: 'You are Zenox, a helpful and intelligent personal AI assistant. Be clear, specific, and genuinely useful.'
+          systemInstruction: 'You are Awais Codex, a helpful and intelligent personal AI assistant. Be clear, specific, and genuinely useful.'
         }
       });
 
