@@ -67,7 +67,7 @@ async def chat(request: Request, _=Depends(verify_api_key)):
     async def stream_generator():
         try:
             stream = await client.chat.completions.create(
-                model="llama-3.1-70b-versatile",
+                model="llama3-8b-8192",
                 messages=messages,
                 stream=True,
             )
