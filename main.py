@@ -77,7 +77,7 @@ async def chat(request: Request, _=Depends(verify_api_key)):
         try:
             # We must use async generator if we have async client, but standard GenAI SDK provides async client
             # Let's wrap standard sync iter in async gen if we can't do async, but genai supports async via client.aio
-            response_iter = await client.aio.models.generate_content_stream(
+            response_iter = client.aio.models.generate_content_stream(
                 model="gemini-2.5-flash",
                 contents=contents,
                 config=types.GenerateContentConfig(
