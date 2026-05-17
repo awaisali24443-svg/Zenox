@@ -67,7 +67,7 @@ async def chat(request: Request, _=Depends(verify_api_key)):
     async def stream_generator():
         try:
             stream = await client.chat.completions.create(
-                model="moonshotai/kimi-k2-instruct",
+                model="llama-3.1-70b-versatile",
                 messages=messages,
                 stream=True,
             )

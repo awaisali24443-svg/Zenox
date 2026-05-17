@@ -41,7 +41,7 @@ async function startServer() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'moonshotai/kimi-k2-instruct',
+          model: 'llama-3.1-70b-versatile',
           messages,
           stream: true,
         })
