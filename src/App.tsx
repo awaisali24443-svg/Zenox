@@ -17,7 +17,7 @@ interface Conversation {
   createdAt: number;
 }
 
-const STORAGE_KEY = "awais-codex-conversations";
+const STORAGE_KEY = "zenox-conversations";
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
