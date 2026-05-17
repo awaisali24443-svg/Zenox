@@ -3,7 +3,8 @@ import asyncio
 from fastapi import FastAPI, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from groq import AsyncGroq
+from google import genai
+from google.genai import types
 import httpx
 
 # PERMANENT PING SYSTEM — DO NOT REMOVE OR MODIFY
@@ -44,7 +45,7 @@ async def startup_event():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "agent": "groq", "version": "1.0"}
+    return {"status": "ok", "agent": "gemini", "version": "1.0"}
 
 def verify_api_key(x_api_key: str = Header(None)):
     expected = os.getenv("SYNOD_API_KEY", "local-dev-key")
@@ -53,27 +54,39 @@ def verify_api_key(x_api_key: str = Header(None)):
 
 @app.post("/api/chat")
 async def chat(request: Request, _=Depends(verify_api_key)):
-    key = os.getenv("GROQ_API_KEY")
+    key = os.getenv("GEMINI_API_KEY")
     if not key:
-        raise HTTPException(status_code=503, detail="GROQ_API_KEY not set")
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set")
     data = await request.json()
-    messages = [{"role": "system", "content": "You are Zenox, a helpful and intelligent personal AI assistant. Be clear, specific, and genuinely useful."}]
-    for m in data.get("history", []):
-        messages.append({"role": m["role"], "content": m["content"]})
-    messages.append({"role": "user", "content": data.get("message", "")})
     
-    client = AsyncGroq(api_key=key)
+    # Format messages for Gemini API
+    # The system instruction is handled separately
+    system_instruction = "You are Zenox, a helpful and intelligent personal AI assistant. Be clear, specific, and genuinely useful."
+    
+    contents = []
+    for m in data.get("history", []):
+        role = "user" if m["role"] == "user" else "model"
+        contents.append(types.Content(role=role, parts=[types.Part.from_text(m["content"])]))
+    
+    contents.append(types.Content(role="user", parts=[types.Part.from_text(data.get("message", ""))]))
+    
+    client = genai.Client(api_key=key, http_options={'api_version': 'v1alpha'})
+    # Use v1alpha for stream if it's more stable, or just default which is v1alpha
     
     async def stream_generator():
         try:
-            stream = await client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages,
-                stream=True,
+            # We must use async generator if we have async client, but standard GenAI SDK provides async client
+            # Let's wrap standard sync iter in async gen if we can't do async, but genai supports async via client.aio
+            response_iter = await client.aio.models.generate_content_stream(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction
+                )
             )
-            async for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+            async for chunk in response_iter:
+                if chunk.text is not None:
+                    yield chunk.text
         except Exception as e:
             yield str(e)
 
