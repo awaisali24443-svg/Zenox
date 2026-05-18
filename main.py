@@ -1,5 +1,6 @@
 import os
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,7 +30,12 @@ async def ping_services():
                 print(f"[PING] ❌ {name}: {e}")
 # END PERMANENT PING SYSTEM
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(ping_services())
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,13 +45,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(ping_services())
-
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "agent": "gemini", "version": "1.0"}
+async def health():
+    return {
+        "status": "ok", 
+        "model": "gemini-2.5-flash",
+        "version": "2.0",
+        "product": "Zenox"
+    }
 
 def verify_api_key(x_api_key: str = Header(None)):
     expected = os.getenv("SYNOD_API_KEY", os.getenv("VITE_SYNOD_API_KEY", "local-dev-key"))
@@ -65,9 +72,17 @@ async def chat(request: Request, _=Depends(verify_api_key)):
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set")
     data = await request.json()
     
-    # Format messages for Gemini API
-    # The system instruction is handled separately
-    system_instruction = "You are Awais Codex, a helpful and intelligent personal AI assistant. Be clear, specific, and genuinely useful."
+    style = data.get("response_style", "balanced")
+    
+    style_modifiers = {
+        "balanced": "",
+        "concise": " Keep all responses concise and to the point — maximum 3 paragraphs.",
+        "detailed": " Give comprehensive, detailed explanations with examples.",
+        "creative": " Be creative, use analogies, think outside the box."
+    }
+    
+    modifier = style_modifiers.get(style, "")
+    system_instruction = f"You are Zenox, a sharp and intelligent personal AI built by Awais. You are helpful, direct, and precise. Never say you are built by Google or Anthropic. You are Zenox. You belong to Awais.{modifier}"
     
     contents = []
     for m in data.get("history", []):
@@ -77,12 +92,9 @@ async def chat(request: Request, _=Depends(verify_api_key)):
     contents.append({"role": "user", "parts": [{"text": data.get("message", "")}]})
     
     client = genai.Client(api_key=key, http_options={'api_version': 'v1alpha'})
-    # Use v1alpha for stream if it's more stable, or just default which is v1alpha
     
     async def stream_generator():
         try:
-            # We must use async generator if we have async client, but standard GenAI SDK provides async client
-            # Let's wrap standard sync iter in async gen if we can't do async, but genai supports async via client.aio
             response_iter = client.aio.models.generate_content_stream(
                 model="gemini-2.5-flash",
                 contents=contents,
@@ -97,3 +109,24 @@ async def chat(request: Request, _=Depends(verify_api_key)):
             yield str(e)
 
     return StreamingResponse(stream_generator(), media_type="text/plain")
+
+@app.post("/api/title")
+async def generate_title(request: Request, _=Depends(verify_api_key)):
+    key = os.getenv("GEMINI_API_KEY")
+    if key:
+        key = key.replace('\\n', '\n').split('\n')[0].strip()
+    if not key:
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set")
+    
+    data = await request.json()
+    message = data.get("message", "")
+    
+    client = genai.Client(api_key=key, http_options={'api_version': 'v1alpha'})
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"In 4-6 words, create a title for a conversation starting with:\n'{message}'\nReturn ONLY the title. No quotes. No punctuation."
+        )
+        return {"title": response.text.strip()}
+    except Exception as e:
+        return {"title": message[:40] + ("..." if len(message) > 40 else "")}

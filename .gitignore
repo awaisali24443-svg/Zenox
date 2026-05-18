@@ -8,3 +8,6 @@ coverage/
 !.env.example
 __pycache__/
 *.pyc
+metadata.json
+server.ts
+*.test.py

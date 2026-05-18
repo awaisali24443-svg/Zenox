@@ -1,6 +1,0 @@
-{
-  "name": "Awais Codex",
-  "description": "A personal autonomous AI agent web app.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
