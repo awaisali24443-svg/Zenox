@@ -95,7 +95,7 @@ async def chat(request: Request, _=Depends(verify_api_key)):
     
     async def stream_generator():
         try:
-            response_iter = client.aio.models.generate_content_stream(
+            response_iter = await client.aio.models.generate_content_stream(
                 model="gemini-2.5-flash",
                 contents=contents,
                 config=types.GenerateContentConfig(
