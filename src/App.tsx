@@ -598,7 +598,7 @@ export default function App() {
               <p className="text-[10px] text-[#444] uppercase tracking-widest font-medium">personal ai · by awais</p>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="xl:hidden p-3 text-[#555] hover:text-white">
+          <button onClick={() => setSidebarOpen(false)} className="xl:hidden p-3 text-[#555] hover:text-white" aria-label="Close sidebar">
             <X size={20} />
           </button>
         </div>
@@ -607,6 +607,7 @@ export default function App() {
           <button 
             onClick={startNewChat}
             className="w-full relative overflow-hidden flex items-center justify-center gap-2 bg-green-900/40 md:hover:bg-green-900/60 text-green-400 border border-green-800/50 rounded-lg py-2.5 px-4 font-medium transition-all duration-200 before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/5 before:to-transparent before:-translate-x-full md:hover:before:translate-x-full before:transition-transform before:duration-700"
+            aria-label="New Chat"
           >
             <Plus size={18} />
             <span>New Chat</span>
@@ -659,6 +660,7 @@ export default function App() {
               <button 
                 onClick={(e) => deleteConversation(e, conv.id)}
                 className="absolute right-2 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 p-3 md:p-1 text-[#555555] md:hover:text-red-400 transition-all"
+                aria-label="Delete chat"
               >
                 <Trash2 size={14} />
               </button>
@@ -677,7 +679,7 @@ export default function App() {
                 <><Terminal size={14} className="text-yellow-500" /> <span className="text-[#a0a0a0]">Checking status...</span></>
               )}
             </div>
-            <button onClick={() => setSettingsOpen(true)} className="p-3 md:p-1.5 text-[#555] md:hover:text-white transition-colors">
+            <button onClick={() => setSettingsOpen(true)} className="p-3 md:p-1.5 text-[#555] md:hover:text-white transition-colors" aria-label="Settings">
               <Settings size={16} />
             </button>
           </div>
@@ -689,14 +691,14 @@ export default function App() {
         
         {/* Mobile Header */}
         <header className="xl:hidden flex items-center justify-between p-3 border-b border-[#1f1f1f] bg-[#111111] shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 text-[#a0a0a0] active:text-white">
+          <button onClick={() => setSidebarOpen(true)} className="p-2 text-[#a0a0a0] active:text-white" aria-label="Open sidebar">
             <Menu size={24} />
           </button>
           <div className="flex items-center gap-2">
             <ZenoxLogo size={20} />
             <div className="font-semibold italic text-white tracking-tight">Zenox</div>
           </div>
-          <button onClick={() => setSettingsOpen(true)} className="p-2 text-[#a0a0a0] active:text-white">
+          <button onClick={() => setSettingsOpen(true)} className="p-2 text-[#a0a0a0] active:text-white" aria-label="Settings">
             <Settings size={20} />
           </button>
         </header>
@@ -721,6 +723,7 @@ export default function App() {
             <button 
               onClick={() => setSettingsOpen(true)}
               className="text-[#444] hover:text-white transition-colors p-1.5 rounded-lg hover:bg-[#1a1a1a]"
+              aria-label="Settings"
             >
               <Settings size={16} />
             </button>
@@ -778,6 +781,7 @@ export default function App() {
                             showToast('Copied to clipboard', 'success');
                           }}
                           className="absolute top-3 right-3 text-[#555555] md:hover:text-white transition-colors bg-[#111111] p-2 md:p-1 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-md"
+                          aria-label="Copy message"
                         >
                           {copiedIndex === idx ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
                         </button>
@@ -834,7 +838,8 @@ export default function App() {
 
                 {messages.length > 0 && messages[messages.length - 1].role === 'assistant' && !isLoading && (
                   <button onClick={handleRegenerate}
-                    className="flex items-center gap-1.5 text-xs text-[#555] md:hover:text-white transition-colors mt-2 ml-1 p-2 md:p-0">
+                    className="flex items-center gap-1.5 text-xs text-[#555] md:hover:text-white transition-colors mt-2 ml-1 p-2 md:p-0"
+                    aria-label="Regenerate">
                     <RefreshCw size={12} />
                     Regenerate
                   </button>
@@ -848,6 +853,7 @@ export default function App() {
             <button 
               onClick={() => messagesEndRef.current?.scrollIntoView({behavior:'smooth'})}
               className="absolute bottom-4 right-4 z-10 bg-[#1a1a1a] border border-[#2a2a2a] text-white rounded-full p-3 md:p-2 shadow-xl border-t border-[#333] flex items-center gap-1.5 text-[10px] md:text-xs animate-[fadeIn_0.2s_ease]"
+              aria-label="Scroll to bottom"
             >
               <ArrowDown size={14} />
             </button>
@@ -880,7 +886,7 @@ export default function App() {
                   <p className="text-xs text-white truncate">{selectedImage.name}</p>
                   <p className="text-[10px] text-[#555]">{(selectedImage.size / 1024 / 1024).toFixed(2)} MB</p>
                 </div>
-                <button onClick={() => { setSelectedImage(null); setImagePreview(null); if(imageInputRef.current) imageInputRef.current.value=''; }} className="p-2 text-[#555] hover:text-red-400">
+                <button onClick={() => { setSelectedImage(null); setImagePreview(null); if(imageInputRef.current) imageInputRef.current.value=''; }} className="p-2 text-[#555] hover:text-red-400" aria-label="Remove image">
                   <X size={16} />
                 </button>
               </div>
@@ -889,12 +895,12 @@ export default function App() {
             <div className={`bg-[#111111] border rounded-2xl p-2 transition-all duration-300 flex items-end ${
               isLoading ? 'border-[#1f1f1f]/50' : 'border-[#1f1f1f] focus-within:border-green-500 focus-within:shadow-[0_0_0_2px_rgba(34,197,94,0.15)] shadow-lg'
             }`}>
-              <button onClick={() => imageInputRef.current?.click()} className="p-3 md:p-2 text-[#555] md:hover:text-green-400 transition-colors flex-shrink-0 self-end mb-1">
+              <button onClick={() => imageInputRef.current?.click()} className="p-3 md:p-2 text-[#555] md:hover:text-green-400 transition-colors flex-shrink-0 self-end mb-1" aria-label="Upload image">
                 <ImageIcon size={18} />
               </button>
               <input type="file" ref={imageInputRef} className="hidden" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageSelect} />
               
-              <button onClick={toggleVoiceInput} className={`p-3 md:p-2 transition-colors flex-shrink-0 self-end mb-1 ${isListening ? 'text-red-400 animate-pulse' : 'text-[#555] md:hover:text-green-400'}`}>
+              <button onClick={toggleVoiceInput} className={`p-3 md:p-2 transition-colors flex-shrink-0 self-end mb-1 ${isListening ? 'text-red-400 animate-pulse' : 'text-[#555] md:hover:text-green-400'}`} aria-label={isListening ? "Stop voice input" : "Start voice input"}>
                 {isListening ? <MicOff size={18} /> : <Mic size={18} />}
               </button>
               
@@ -912,7 +918,7 @@ export default function App() {
               
               <div className="flex-shrink-0 self-end mb-1 mr-1 ml-1">
                 {isLoading ? (
-                  <button onClick={stopGeneration} className="p-3 md:p-2 rounded-xl bg-red-500/20 text-red-400">
+                  <button onClick={stopGeneration} className="p-3 md:p-2 rounded-xl bg-red-500/20 text-red-400" aria-label="Stop generation">
                     <Square size={18} fill="currentColor" />
                   </button>
                 ) : (
@@ -924,6 +930,7 @@ export default function App() {
                         ? 'bg-transparent text-[#555] cursor-not-allowed'
                         : 'bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] hover:bg-green-400'
                     }`}
+                    aria-label="Send message"
                   >
                     <Send size={18} />
                   </button>
@@ -950,7 +957,7 @@ export default function App() {
                 <h2 className="text-lg font-bold text-white tracking-tight">Settings</h2>
                 <span className="text-[10px] bg-[#1a1a1a] text-[#888] px-2 py-0.5 rounded-full font-medium">v3.0</span>
               </div>
-              <button onClick={() => setSettingsOpen(false)} className="p-3 md:p-1.5 text-[#555] hover:text-white transition-colors">
+              <button onClick={() => setSettingsOpen(false)} className="p-3 md:p-1.5 text-[#555] hover:text-white transition-colors" aria-label="Close settings">
                 <X size={18} />
               </button>
             </div>
