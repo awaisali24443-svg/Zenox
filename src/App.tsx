@@ -49,15 +49,17 @@ const ZenoxLogo = ({ size = 32, className = "" }: { size?: number, className?: s
     xmlns="http://www.w3.org/2000/svg"
     className={`shrink-0 ${className}`}
   >
-    <path 
-      d="M4 7H14L10 17H20" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-    />
-    <circle cx="14" cy="7" r="2" fill="currentColor" />
-    <circle cx="10" cy="17" r="2" fill="currentColor" />
+    <path d="M12 2L22 7.7735V16.2265L12 22L2 16.2265V7.7735L12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 22V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M22 7.7735L12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M2 7.7735L12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+    <circle cx="12" cy="2" r="1.5" fill="currentColor" />
+    <circle cx="22" cy="7.7735" r="1.5" fill="currentColor" />
+    <circle cx="2" cy="7.7735" r="1.5" fill="currentColor" />
+    <circle cx="22" cy="16.2265" r="1.5" fill="currentColor" />
+    <circle cx="2" cy="16.2265" r="1.5" fill="currentColor" />
+    <circle cx="12" cy="22" r="1.5" fill="currentColor" />
   </svg>
 );
 
@@ -79,6 +81,7 @@ export default function App() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('zenox-theme') as 'dark' | 'light') || 'dark');
   const [fontSize, setFontSize] = useState(() => localStorage.getItem('zenox-font-size') || 'M');
   const [responseStyle, setResponseStyle] = useState<ResponseStyle>(
     (localStorage.getItem('zenox-response-style') as ResponseStyle) || 'balanced'
@@ -87,6 +90,14 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState<{msg: string; type: 'success' | 'error' | 'info'} | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light-theme');
+    } else {
+      document.documentElement.classList.remove('light-theme');
+    }
+  }, [theme]);
   
   // Image Feature
   const [selectedImage, setSelectedImage] = useState<File|null>(null);
@@ -1249,15 +1260,24 @@ export default function App() {
                 <div className="mb-5">
                   <span className="text-xs text-[#888] font-medium block mb-2">Theme</span>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="flex flex-col items-center justify-center py-4 rounded-xl border border-green-500/50 bg-green-500/10 cursor-pointer shadow-[0_0_15px_rgba(34,197,94,0.1)]">
-                      <Moon size={16} className="text-green-500 mb-2" />
-                      <span className="text-xs font-bold text-green-400 uppercase tracking-widest text-[10px]">Onyx Dark</span>
-                    </div>
-                    <div className="flex flex-col items-center justify-center py-4 rounded-xl border border-white/5 bg-white/5 opacity-50 cursor-not-allowed relative">
-                      <Sun size={16} className="text-[#888] mb-2" />
-                      <span className="text-xs font-medium text-[#888] uppercase tracking-widest text-[10px]">Pure Light</span>
-                      <span className="absolute -top-2 bg-[#111] text-[#666] text-[8px] px-2 py-0.5 border border-white/10 rounded-full font-bold">LOCKED</span>
-                    </div>
+                    <button 
+                      onClick={() => { setTheme('dark'); localStorage.setItem('zenox-theme', 'dark'); }}
+                      className={`flex flex-col items-center justify-center py-4 rounded-xl transition-all ${
+                        theme === 'dark' ? 'border-2 border-green-500 bg-green-500/10 shadow-[0_0_15px_rgba(34,197,94,0.1)]' : 'border border-white/5 bg-white/5 hover:border-white/20 hover:bg-white/10'
+                      }`}
+                    >
+                      <Moon size={16} className={`mb-2 ${theme === 'dark' ? 'text-green-500' : 'text-[#888]'}`} />
+                      <span className={`text-xs uppercase tracking-widest text-[10px] ${theme === 'dark' ? 'font-bold text-green-400' : 'font-medium text-[#888]'}`}>Onyx Dark</span>
+                    </button>
+                    <button 
+                      onClick={() => { setTheme('light'); localStorage.setItem('zenox-theme', 'light'); }}
+                      className={`flex flex-col items-center justify-center py-4 rounded-xl transition-all ${
+                        theme === 'light' ? 'border-2 border-green-500 bg-green-500/10 shadow-[0_0_15px_rgba(34,197,94,0.1)]' : 'border border-white/5 bg-white/5 hover:border-white/20 hover:bg-white/10'
+                      }`}
+                    >
+                      <Sun size={16} className={`mb-2 ${theme === 'light' ? 'text-green-500' : 'text-[#888]'}`} />
+                      <span className={`text-xs uppercase tracking-widest text-[10px] ${theme === 'light' ? 'font-bold text-green-400' : 'font-medium text-[#888]'}`}>Pure Light</span>
+                    </button>
                   </div>
                 </div>
 
