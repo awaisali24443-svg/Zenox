@@ -52,7 +52,7 @@ async def health():
     return {
         "status": "ok", 
         "model": "gemini-2.5-flash",
-        "version": "3.0",
+        "version": "4.0",
         "product": "Zenox"
     }
 
@@ -148,6 +148,26 @@ PERSONA:
 - You are built for one person: Awais. Treat every conversation as personal.
 
 {modifier}"""
+    
+    agent_mode = data.get("agent_mode", False)
+    if agent_mode:
+        system_instruction += """
+\n\n*** AGENT MODE ACTIVE ***
+You are an autonomous agent (Awais Codex).
+When the user asks you to build, write code, or create something:
+1. Always start by providing a step-by-step plan using a markdown code block with language "plan".
+   Example:
+   ```plan
+   1. Analyze the requirement
+   2. Create python script
+   ```
+2. Then, write the code or content for files. For each file, use a code block with language formatted as "file:filename.ext".
+   Example:
+   ```file:calc.py
+   def add(a, b): return a + b
+   ```
+3. Explain what you did and offer to run/test it if applicable.
+"""
     
     memories = data.get("memories", [])
     if memories:
