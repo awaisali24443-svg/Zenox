@@ -3,7 +3,8 @@ import {
   Menu, Plus, Copy, Send, Trash2, Check, CheckCircle2, 
   XCircle, Terminal, Square, RefreshCw, Download, Settings,
   ArrowDown, Search, MessageSquare, X, ImageIcon, Mic, MicOff,
-  FileText
+  FileText, Zap, Scissors, BookOpen, Lightbulb, Moon, Sun,
+  AlertTriangle
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -39,23 +40,25 @@ declare global {
   }
 }
 
-const ZenoxLogo = ({ size = 32 }: { size?: number }) => (
-  <div 
-    style={{ width: size, height: size, minWidth: size, minHeight: size }}
-    className="relative flex items-center justify-center 
-      bg-gradient-to-br from-green-500 to-emerald-700 
-      rounded-xl shadow-[0_0_20px_rgba(34,197,94,0.3)] shrink-0"
+const ZenoxLogo = ({ size = 32, className = "" }: { size?: number, className?: string }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+    className={`shrink-0 ${className}`}
   >
-    <span 
-      style={{ fontSize: size * 0.55 }}
-      className="font-black text-black tracking-tighter select-none"
-    >
-      Z
-    </span>
-    <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 
-      bg-green-400 rounded-full border-2 border-[#0a0a0a]
-      shadow-[0_0_8px_rgba(34,197,94,0.8)]" />
-  </div>
+    <path 
+      d="M4 7H14L10 17H20" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+    />
+    <circle cx="14" cy="7" r="2" fill="currentColor" />
+    <circle cx="10" cy="17" r="2" fill="currentColor" />
+  </svg>
 );
 
 export default function App() {
@@ -460,7 +463,7 @@ export default function App() {
       else if (err.message.includes('401') || err.message.includes('403')) errorText = "API key error. Check your VITE_SYNOD_API_KEY setting.";
       else if (err.message.includes('429')) errorText = "Rate limit reached. Wait a moment before sending again.";
       
-      const errorMsg: Message = { role: 'assistant', content: `⚠️ ${errorText}`, timestamp: Date.now() };
+      const errorMsg: Message = { role: 'assistant', content: `[SYSTEM_ERROR] ${errorText}`, timestamp: Date.now() };
       const finalMsg = [...newMessages, errorMsg];
       setMessages(finalMsg);
       saveCurrentConversation(finalMsg, activeId);
@@ -744,7 +747,7 @@ export default function App() {
         <div className="flex items-center justify-between xl:justify-start gap-3 p-6 border-b border-white/5">
           <div className="flex items-center gap-3">
             <div className="p-1.5 bg-gradient-to-br from-green-500/20 to-purple-500/20 rounded-xl border border-white/10 shadow-[0_0_15px_rgba(34,197,94,0.1)]">
-              <ZenoxLogo size={28} />
+              <ZenoxLogo size={28} className="text-green-500 group-hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all rounded-xl" />
             </div>
             <div>
               <h1 className="text-xl font-bold font-sans text-white tracking-tight leading-none bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">Zenox</h1>
@@ -850,7 +853,7 @@ export default function App() {
             <Menu size={20} />
           </button>
           <div className="flex items-center gap-2">
-            <ZenoxLogo size={18} />
+            <ZenoxLogo size={18} className="text-green-500" />
             <div className="font-semibold italic text-white tracking-tight text-sm">Zenox</div>
           </div>
           <button onClick={() => setSettingsOpen(true)} className="p-2 text-[#a0a0a0] active:text-white bg-white/5 rounded-full" aria-label="Settings">
@@ -892,7 +895,7 @@ export default function App() {
             {(messages.length === 0 || (messages.length === 1 && messages[0].content.includes('explore today'))) && !streamingContent ? (
               <div className="flex-1 flex flex-col items-center justify-center -mt-20">
                 <div className="p-4 bg-gradient-to-br from-green-500/10 to-purple-500/10 rounded-3xl border border-white/5 shadow-[0_0_30px_rgba(34,197,94,0.05)] mb-6 animate-[fadeIn_0.3s_ease]">
-                  <ZenoxLogo size={64} />
+                  <ZenoxLogo size={64} className="text-green-500 drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]" />
                 </div>
                 <h2 className="text-4xl sm:text-5xl font-bold font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-white/50 tracking-tight mb-3 text-center animate-[fadeIn_0.5s_ease]">
                   How can I help you today?
@@ -952,8 +955,8 @@ export default function App() {
                       )}
                       
                       <div className={`leading-relaxed text-[var(--chat-font-size)] [&_p]:mb-3 [&_li]:mb-1.5`}>
-                        {msg.role === 'assistant' && msg.content.includes('⚠️') ? (
-                           <div className="text-yellow-400/90 whitespace-pre-wrap font-medium">{msg.content}</div>
+                        {msg.role === 'assistant' && msg.content.includes('[SYSTEM_ERROR]') ? (
+                           <div className="text-yellow-400/90 whitespace-pre-wrap font-medium flex gap-2 items-start"><AlertTriangle size={18} className="shrink-0 mt-0.5" /> <span>{msg.content.replace('[SYSTEM_ERROR]', '').trim()}</span></div>
                         ) : msg.role === 'assistant' ? (
                           renderMarkdown(msg.content)
                         ) : (
@@ -967,7 +970,7 @@ export default function App() {
                         {formatTime(msg.timestamp)}
                       </div>
 
-                      {msg.content.startsWith('⚠️') && (
+                      {msg.content.startsWith('[SYSTEM_ERROR]') && (
                         <button 
                           onClick={() => {
                             // Find the last user message before this error
@@ -1247,10 +1250,12 @@ export default function App() {
                   <span className="text-xs text-[#888] font-medium block mb-2">Theme</span>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col items-center justify-center py-4 rounded-xl border border-green-500/50 bg-green-500/10 cursor-pointer shadow-[0_0_15px_rgba(34,197,94,0.1)]">
-                      <span className="text-xs font-bold text-green-400 uppercase tracking-widest text-[10px]">🌑 Onyx Dark</span>
+                      <Moon size={16} className="text-green-500 mb-2" />
+                      <span className="text-xs font-bold text-green-400 uppercase tracking-widest text-[10px]">Onyx Dark</span>
                     </div>
                     <div className="flex flex-col items-center justify-center py-4 rounded-xl border border-white/5 bg-white/5 opacity-50 cursor-not-allowed relative">
-                      <span className="text-xs font-medium text-[#888] uppercase tracking-widest text-[10px]">☀️ Pure Light</span>
+                      <Sun size={16} className="text-[#888] mb-2" />
+                      <span className="text-xs font-medium text-[#888] uppercase tracking-widest text-[10px]">Pure Light</span>
                       <span className="absolute -top-2 bg-[#111] text-[#666] text-[8px] px-2 py-0.5 border border-white/10 rounded-full font-bold">LOCKED</span>
                     </div>
                   </div>
@@ -1285,10 +1290,10 @@ export default function App() {
                 
                 <div className="space-y-3">
                   {[
-                    { id: 'balanced', icon: '⚡', title: 'Balanced', desc: 'Smart default for most tasks' },
-                    { id: 'concise', icon: '✂️', title: 'Concise', desc: 'Short and direct answers only' },
-                    { id: 'detailed', icon: '📖', title: 'Detailed', desc: 'Deep explanations with examples' },
-                    { id: 'creative', icon: '🎨', title: 'Creative', desc: 'Imaginative and expansive thinking' }
+                    { id: 'balanced', icon: <Zap size={18} />, title: 'Balanced', desc: 'Smart default for most tasks' },
+                    { id: 'concise', icon: <Scissors size={18} />, title: 'Concise', desc: 'Short and direct answers only' },
+                    { id: 'detailed', icon: <BookOpen size={18} />, title: 'Detailed', desc: 'Deep explanations with examples' },
+                    { id: 'creative', icon: <Lightbulb size={18} />, title: 'Creative', desc: 'Imaginative and expansive thinking' }
                   ].map(opt => (
                     <div 
                       key={opt.id}
