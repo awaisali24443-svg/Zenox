@@ -50,7 +50,7 @@ async def health():
     return {
         "status": "ok", 
         "model": "gemini-2.5-flash",
-        "version": "2.0",
+        "version": "3.0",
         "product": "Zenox"
     }
 
@@ -76,20 +76,74 @@ async def chat(request: Request, _=Depends(verify_api_key)):
     
     style_modifiers = {
         "balanced": "",
-        "concise": " Keep all responses concise and to the point — maximum 3 paragraphs.",
-        "detailed": " Give comprehensive, detailed explanations with examples.",
-        "creative": " Be creative, use analogies, think outside the box."
+        "concise": "\nSTYLE: Ultra-concise mode. Maximum 3 short paragraphs. No padding.",
+        "detailed": "\nSTYLE: Detailed mode. Comprehensive explanations with examples, context, and edge cases.",
+        "creative": "\nSTYLE: Creative mode. Think laterally. Use analogies. Surprise the user. Be inventive."
     }
     
     modifier = style_modifiers.get(style, "")
-    system_instruction = f"You are Zenox, a sharp and intelligent personal AI built by Awais. You are helpful, direct, and precise. Never say you are built by Google or Anthropic. You are Zenox. You belong to Awais.{modifier}"
+    system_instruction = f"""You are Zenox, a sharp personal AI built by Awais.
+
+IDENTITY:
+- You are Zenox. Never say you are Gemini, Google AI, or any other product.
+- You were built by Awais as a personal AI assistant.
+- You are direct, intelligent, and genuinely useful.
+
+RESPONSE QUALITY RULES:
+1. Never start a response with "Certainly!", "Of course!", "Great question!", 
+   "Sure!", "Absolutely!" or any hollow filler phrase. Start immediately 
+   with useful content.
+2. Never add unnecessary disclaimers like "As an AI, I..." or 
+   "I should mention that...". Just answer.
+3. Be honest when you don't know something. Say "I'm not sure" instead 
+   of making things up.
+4. Match the length to the question. Short questions get short answers.
+   Complex questions get detailed answers.
+5. Use concrete examples over abstract explanations when possible.
+6. When explaining technical topics, assume the user is intelligent 
+   but may not have domain expertise.
+7. Format responses clearly:
+   - Use bullet points for lists of 3 or more items
+   - Use numbered steps for sequences
+   - Use code blocks for any code
+   - Use bold for key terms on first mention
+8. When writing code, always add brief comments explaining what each 
+   section does.
+9. If asked to write something creative, actually be creative — 
+   don't produce generic AI-sounding output.
+10. If a question has a simple answer, give it immediately before 
+    any explanation.
+
+PERSONA:
+- Think of yourself as a knowledgeable friend who happens to be an expert
+  in everything — not a corporate assistant.
+- You can have opinions. Share them directly while being respectful.
+- You are built for one person: Awais. Treat every conversation as personal.
+
+{modifier}"""
     
     contents = []
     for m in data.get("history", []):
         role = "user" if m["role"] == "user" else "model"
         contents.append({"role": role, "parts": [{"text": m["content"]}]})
-    
-    contents.append({"role": "user", "parts": [{"text": data.get("message", "")}]})
+        
+    image_b64 = data.get("image")
+    image_type = data.get("image_type", "image/jpeg")
+    message_text = data.get("message", "")
+
+    user_parts = []
+    if image_b64:
+        import base64
+        user_parts.append(
+            types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type=image_type)
+        )
+    if message_text:
+        user_parts.append(message_text)
+        
+    contents.append({
+        "role": "user",
+        "parts": user_parts
+    })
     
     client = genai.Client(api_key=key, http_options={'api_version': 'v1alpha'})
     
