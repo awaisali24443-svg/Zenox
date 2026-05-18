@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Menu, Plus, Copy, Send, Trash2, Check, CheckCircle2, 
   XCircle, Terminal, Square, RefreshCw, Download, Settings,
-  ArrowDown, Search, MessageSquare, X, ImageIcon, Mic, MicOff
+  ArrowDown, Search, MessageSquare, X, ImageIcon, Mic, MicOff,
+  FileText
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -89,6 +90,16 @@ export default function App() {
   const [imagePreview, setImagePreview] = useState<string|null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   
+  // Features
+  const MEMORY_KEY = "zenox-memory";
+  const [memories, setMemories] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '[]'); }
+    catch { return []; }
+  });
+  const [uploadedFile, setUploadedFile] = useState<{name:string; content:string} | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  
   // Voice feature
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -133,6 +144,10 @@ export default function App() {
   }, [conversations]);
 
   useEffect(() => {
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(memories.slice(0, 50)));
+  }, [memories]);
+
+  useEffect(() => {
     const checkHealth = async () => {
       try {
         const res = await fetch(`${API_URL}/api/health`);
@@ -154,7 +169,7 @@ export default function App() {
     checkHealth();
     const interval = setInterval(checkHealth, 60000);
     return () => clearInterval(interval);
-  }, [backendStatus]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -279,8 +294,58 @@ export default function App() {
       reader.readAsDataURL(file);
     });
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (file.size > 500 * 1024) {
+      showToast('File must be under 500KB', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setUploadedFile({ name: file.name, content });
+      showToast(`File loaded: ${file.name}`, 'success');
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const processMemoryCommand = (text: string): string | null => {
+    const rememberMatch = text.match(/(?:remember|note|save|keep in mind)[:\s]+(.+)/i);
+    if (rememberMatch) {
+      const memToSave = rememberMatch[1].trim();
+      setMemories(prev => {
+        const newMems = [memToSave, ...prev.filter(m => m !== memToSave)];
+        return newMems.slice(0, 50);
+      });
+      return memToSave;
+    }
+    const forgetMatch = text.match(/(?:forget|delete|remove) memory[:\s]+(.+)/i);
+    if (forgetMatch) {
+      const memToForget = forgetMatch[1].trim();
+      setMemories(prev => prev.filter(m => !m.toLowerCase().includes(memToForget.toLowerCase())));
+      return null;
+    }
+    return null;
+  };
+
   const handleSendWithMessage = async (overrideMessage: string) => {
-    if (!overrideMessage.trim() && !selectedImage || isLoading) return;
+    if (!overrideMessage.trim() && !selectedImage && !uploadedFile || isLoading) return;
+
+    const savedMemory = processMemoryCommand(overrideMessage);
+    if (savedMemory) {
+      showToast(`Remembered: "${savedMemory.slice(0, 40)}..."`, 'success');
+    }
+
+    let finalMessage = overrideMessage.trim();
+    if (uploadedFile) {
+      finalMessage = `${finalMessage}\n\n[FILE: ${uploadedFile.name}]\n\`\`\`\n${uploadedFile.content.slice(0, 8000)}\n\`\`\``;
+      setUploadedFile(null);
+    }
 
     let imageBase64: string | undefined;
     let imageType: string | undefined;
@@ -293,7 +358,7 @@ export default function App() {
 
     const userMsg: Message = { 
       role: 'user', 
-      content: overrideMessage.trim(), 
+      content: finalMessage, 
       timestamp: Date.now(),
       imageUrl: currentImagePreview || undefined
     };
@@ -331,7 +396,8 @@ export default function App() {
           history: historyToUse,
           response_style: responseStyle,
           image: imageBase64,
-          image_type: imageType
+          image_type: imageType,
+          memories: memories.slice(0, 10)
         }),
         signal: abortControllerRef.current.signal
       });
@@ -363,6 +429,19 @@ export default function App() {
         setMessages(finalMessages);
         setStreamingContent('');
         saveCurrentConversation(finalMessages, activeId);
+
+        setSuggestions([]);  // clear old ones
+        // Fetch suggestions without awaiting (background)
+        fetch(`${API_URL}/api/suggestions`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json','X-API-Key':API_KEY},
+          body: JSON.stringify({
+            last_response: fullContent.slice(0, 500),
+            original_question: userMsg.content
+          })
+        }).then(r => r.json()).then(data => {
+          if (data.suggestions?.length) setSuggestions(data.suggestions);
+        }).catch(() => {});
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
@@ -442,9 +521,19 @@ export default function App() {
   };
 
   const handleRegenerate = () => {
-    if (messages.length < 2) return;
-    const lastUserMsg = messages[messages.length - 2];
-    setMessages(prev => prev.slice(0, -2));
+    // Find the last user message (may not always be index -2)
+    const userMessages = messages.filter(m => m.role === 'user');
+    if (userMessages.length === 0) return;
+    const lastUserMsg = userMessages[userMessages.length - 1];
+    // Remove all messages from the last user message onward
+    const lastUserIndex = messages.lastIndexOf(
+      messages.filter(m => m.role === 'user').at(-1)!
+    );
+    setMessages(prev => {
+      const idx = [...prev].reverse().findIndex(m => m.role === 'user');
+      if (idx === -1) return prev;
+      return prev.slice(0, prev.length - idx - 1);
+    });
     handleSendWithMessage(lastUserMsg.content);
   };
 
@@ -565,6 +654,12 @@ export default function App() {
     c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.messages.some(m => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  const mightSearch = (text: string) => {
+    const triggers = ['today','current','latest','now','news',
+      'price','weather','recent','right now','this week'];
+    return triggers.some(t => text.toLowerCase().includes(t));
+  };
 
   const [expandedShortcuts, setExpandedShortcuts] = useState(false);
 
@@ -813,13 +908,23 @@ export default function App() {
                 {msgStatus === 'thinking' && (
                   <div className="w-full flex justify-start animate-[fadeIn_0.3s_ease]">
                     <div className="max-w-[92%] sm:max-w-[85%] lg:max-w-[70%] rounded-2xl p-4 bg-[#111] border border-[#1f1f1f] rounded-bl-sm">
-                      <div className="flex items-center gap-2 text-[#555]">
-                        <div className="flex gap-1">
-                          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay:'0ms'}} />
-                          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay:'150ms'}} />
-                          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay:'300ms'}} />
-                        </div>
-                        <span className="text-xs text-[#555]">Zenox is thinking...</span>
+                      <div className="flex items-center gap-2 text-[#555] text-xs">
+                        {mightSearch(messages[messages.length-1]?.content || '') ? (
+                          <>
+                            <span className="animate-spin text-green-500">⟳</span>
+                            Searching web...
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex gap-1">
+                              {[0,150,300].map(d => (
+                                <span key={d} className="w-2 h-2 bg-green-500 rounded-full animate-bounce"
+                                  style={{animationDelay:`${d}ms`}} />
+                              ))}
+                            </span>
+                            Zenox is thinking...
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -844,6 +949,25 @@ export default function App() {
                     Regenerate
                   </button>
                 )}
+
+                {suggestions.length > 0 && !isLoading && (
+                  <div className="flex flex-wrap gap-2 mt-2 pb-2">
+                    {suggestions.map((s, i) => (
+                      <button key={i}
+                        onClick={() => {
+                          setSuggestions([]);
+                          handleSendWithMessage(s);
+                        }}
+                        className="px-3 py-1.5 text-xs border border-[#2a2a2a] rounded-full
+                          bg-[#111] text-[#888] hover:text-white hover:border-green-500/50
+                          hover:bg-[#1a1a1a] transition-all"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div ref={messagesEndRef} />
               </div>
             )}
@@ -892,9 +1016,37 @@ export default function App() {
               </div>
             )}
 
+            {uploadedFile && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-[#1a1a1a] 
+                rounded-xl border border-[#2a2a2a] mb-2 mx-1">
+                <span className="text-lg">📄</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white font-medium truncate">{uploadedFile.name}</p>
+                  <p className="text-[10px] text-[#555]">
+                    {(uploadedFile.content.length / 1000).toFixed(1)}KB ready to analyze
+                  </p>
+                </div>
+                <button onClick={() => setUploadedFile(null)} 
+                  className="text-[#555] hover:text-red-400 min-w-[44px] min-h-[44px] 
+                    flex items-center justify-center">
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             <div className={`bg-[#111111] border rounded-2xl p-2 transition-all duration-300 flex items-end ${
               isLoading ? 'border-[#1f1f1f]/50' : 'border-[#1f1f1f] focus-within:border-green-500 focus-within:shadow-[0_0_0_2px_rgba(34,197,94,0.15)] shadow-lg'
             }`}>
+              <button onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-[#555] hover:text-green-400 transition-colors 
+                  flex-shrink-0 self-end mb-2 min-w-[44px] min-h-[44px] 
+                  md:min-w-0 md:min-h-0 flex items-center justify-center">
+                <FileText size={18} />
+              </button>
+              <input type="file" ref={fileInputRef} className="hidden"
+                accept=".txt,.md,.py,.js,.ts,.jsx,.tsx,.json,.csv,.html,.css,.xml,.yaml,.yml"
+                onChange={handleFileSelect} />
+
               <button onClick={() => imageInputRef.current?.click()} className="p-3 md:p-2 text-[#555] md:hover:text-green-400 transition-colors flex-shrink-0 self-end mb-1" aria-label="Upload image">
                 <ImageIcon size={18} />
               </button>
@@ -907,7 +1059,10 @@ export default function App() {
               <textarea
                 ref={inputRef}
                 value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                onChange={(e) => {
+                  setInputValue(e.target.value);
+                  if (e.target.value.length === 0) setSuggestions([]);
+                }}
                 onKeyDown={handleKeyDown}
                 placeholder="Message Zenox..."
                 disabled={isLoading}
@@ -1072,6 +1227,44 @@ export default function App() {
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Memories */}
+              <div className="p-5 border-b border-[#1a1a1a]">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-[10px] font-bold text-[#555] uppercase tracking-wider">Memories</h3>
+                  <span className="text-[10px] bg-[#1a1a1a] text-white px-2 py-0.5 rounded-full">{memories.length} saved</span>
+                </div>
+                
+                {memories.length > 0 ? (
+                  <div className="space-y-2">
+                    {memories.slice(0, 3).map((mem, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs bg-[#0d0d0d] p-2.5 rounded-lg border border-[#1f1f1f]">
+                        <span className="text-[#a0a0a0] truncate flex-1 mr-3 text-left">"{mem}"</span>
+                        <button onClick={() => setMemories(prev => prev.filter(m => m !== mem))} className="text-[#555] hover:text-red-400 p-1">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    {memories.length > 3 && (
+                      <div className="text-center mt-2">
+                        <button onClick={() => showToast(`There are ${memories.length - 3} more memories available`, 'info')} className="text-[10px] text-[#555] hover:text-white transition-colors">
+                          + {memories.length - 3} more (used continuously)
+                        </button>
+                      </div>
+                    )}
+                    <button 
+                      onClick={() => { setMemories([]); showToast('All memories cleared', 'success'); }}
+                      className="w-full mt-3 text-xs bg-red-900/20 hover:bg-red-900/40 text-red-400 py-2 rounded-lg transition-colors border border-red-900/30"
+                    >
+                      Clear all memories
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#555] text-center p-4 bg-[#0d0d0d] rounded-lg border border-[#1f1f1f]">
+                    Tell Zenox to "remember [something]" and it will appear here.
+                  </p>
+                )}
               </div>
 
               {/* About section */}

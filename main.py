@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
 import httpx
+import base64
+import urllib.parse
 
 # PERMANENT PING SYSTEM — DO NOT REMOVE OR MODIFY
 async def ping_services():
@@ -55,13 +57,38 @@ async def health():
     }
 
 def verify_api_key(x_api_key: str = Header(None)):
-    expected = os.getenv("SYNOD_API_KEY", os.getenv("VITE_SYNOD_API_KEY", "local-dev-key"))
+    expected = os.getenv("SYNOD_API_KEY", "local-dev-key")
     if expected:
         expected = expected.replace('\\n', '\n').split('\n')[0].strip()
-    
-    if x_api_key != expected and expected != "local-dev-key":
-        if x_api_key != "local-dev-key" and x_api_key != os.getenv("VITE_SYNOD_API_KEY"):
-             raise HTTPException(status_code=401, detail="Unauthorized")
+    # In local dev, local-dev-key is always accepted
+    # In production, key must match SYNOD_API_KEY exactly
+    if x_api_key != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+async def web_search(query: str) -> str:
+    """Search the web using DuckDuckGo. No API key needed."""
+    try:
+        encoded = urllib.parse.quote(query)
+        url = f"https://api.duckduckgo.com/?q={encoded}&format=json&no_html=1&skip_disambig=1"
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(url, headers={"User-Agent": "Zenox/3.0"})
+            data = r.json()
+        
+        results = []
+        # Abstract (main answer)
+        if data.get("AbstractText"):
+            results.append(f"Summary: {data['AbstractText']}")
+        # Related topics
+        for topic in data.get("RelatedTopics", [])[:3]:
+            if isinstance(topic, dict) and topic.get("Text"):
+                results.append(f"• {topic['Text']}")
+        
+        if results:
+            return "Web search results:\n" + "\n".join(results)
+        return ""
+    except Exception as e:
+        print(f"[SEARCH] Error: {e}")
+        return ""
 
 @app.post("/api/chat")
 async def chat(request: Request, _=Depends(verify_api_key)):
@@ -122,6 +149,30 @@ PERSONA:
 
 {modifier}"""
     
+    memories = data.get("memories", [])
+    if memories:
+        memory_text = "\n".join(f"- {m}" for m in memories)
+        system_instruction = system_instruction + f"\n\nTHINGS AWAIS HAS TOLD YOU TO REMEMBER:\n{memory_text}\nUse this context naturally when relevant."
+    
+    message_text = data.get("message", "")
+    
+    SEARCH_TRIGGERS = [
+        "today", "current", "latest", "now", "2025", "2026",
+        "news", "price", "weather", "who is", "what is happening",
+        "recent", "last week", "this week", "right now"
+    ]
+    
+    search_context = ""
+    message_lower = message_text.lower()
+    needs_search = any(t in message_lower for t in SEARCH_TRIGGERS)
+    
+    if needs_search:
+        search_context = await web_search(message_text)
+    
+    # Add search context to system instruction if found
+    if search_context:
+        system_instruction = system_instruction + f"\n\nCURRENT WEB DATA:\n{search_context}\nUse this data in your response if relevant."
+    
     contents = []
     for m in data.get("history", []):
         role = "user" if m["role"] == "user" else "model"
@@ -133,12 +184,18 @@ PERSONA:
 
     user_parts = []
     if image_b64:
-        import base64
         user_parts.append(
-            types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type=image_type)
+            types.Part.from_bytes(
+                data=base64.b64decode(image_b64), 
+                mime_type=image_type
+            )
         )
     if message_text:
-        user_parts.append(message_text)
+        # Must be types.Part, not raw string, when mixed with image parts
+        user_parts.append(types.Part.from_text(text=message_text))
+    
+    if not user_parts:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
         
     contents.append({
         "role": "user",
@@ -149,14 +206,13 @@ PERSONA:
     
     async def stream_generator():
         try:
-            response_iter = await client.aio.models.generate_content_stream(
+            async for chunk in client.aio.models.generate_content_stream(
                 model="gemini-2.5-flash",
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction
                 )
-            )
-            async for chunk in response_iter:
+            ):
                 if chunk.text is not None:
                     yield chunk.text
         except Exception as e:
@@ -184,3 +240,28 @@ async def generate_title(request: Request, _=Depends(verify_api_key)):
         return {"title": response.text.strip()}
     except Exception as e:
         return {"title": message[:40] + ("..." if len(message) > 40 else "")}
+
+@app.post("/api/suggestions")
+async def get_suggestions(request: Request, _=Depends(verify_api_key)):
+    key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not key:
+        return {"suggestions": []}
+    data = await request.json()
+    last_response = data.get("last_response", "")[:500]
+    original = data.get("original_question", "")[:200]
+    client = genai.Client(api_key=key, http_options={'api_version':'v1alpha'})
+    try:
+        r = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"""Based on this Q&A:
+Q: {original}
+A: {last_response}
+
+Generate exactly 3 short follow-up questions the user might want to ask next.
+Format: Return ONLY 3 questions, one per line, no numbers, no bullets, no punctuation at end.
+Keep each question under 8 words."""
+        )
+        lines = [l.strip() for l in r.text.strip().split('\n') if l.strip()][:3]
+        return {"suggestions": lines}
+    except:
+        return {"suggestions": []}
