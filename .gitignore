@@ -11,3 +11,4 @@ __pycache__/
 metadata.json
 server.ts
 *.test.py
+firebase-applet-config.json

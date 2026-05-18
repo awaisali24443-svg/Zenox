@@ -153,7 +153,7 @@ PERSONA:
     if agent_mode:
         system_instruction += """
 \n\n*** AGENT MODE ACTIVE ***
-You are an autonomous agent (Awais Codex).
+You are an autonomous agent (Zenox).
 When the user asks you to build, write code, or create something:
 1. Always start by providing a step-by-step plan using a markdown code block with language "plan".
    Example:

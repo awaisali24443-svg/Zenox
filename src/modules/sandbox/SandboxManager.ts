@@ -132,7 +132,7 @@ export class SandboxManager {
             const result = await runCode();
             console.log = originalLog;
             
-            self.postMessage({ success: true, output: output.length ? output.join('\\n') : String(result) });
+            self.postMessage({ success: true, output: output.length ? output.join('\n') : String(result) });
           } catch (error) {
             self.postMessage({ success: false, error: error.toString() });
           }

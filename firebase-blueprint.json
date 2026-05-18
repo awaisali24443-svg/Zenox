@@ -1,0 +1,133 @@
+{
+  "entities": {
+    "UserContext": {
+      "title": "UserContext",
+      "description": "Long-term memory and preferences for a user",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "preferences": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "lastDeployment": {
+          "type": "string"
+        }
+      },
+      "required": ["userId"]
+    },
+    "MemoryEntry": {
+      "title": "MemoryEntry",
+      "description": "Short-term working memory item",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "number"
+        }
+      },
+      "required": ["userId", "content", "timestamp"]
+    },
+    "TaskRecord": {
+      "title": "TaskRecord",
+      "description": "Record of a task for the agent",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "processing", "completed", "failed", "queued"]
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "error": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "number"
+        },
+        "updatedAt": {
+          "type": "number"
+        }
+      },
+      "required": ["id", "userId", "prompt", "status", "createdAt", "updatedAt"]
+    },
+    "AgentSkill": {
+      "title": "AgentSkill",
+      "description": "Dynamically synthesized agent tool/skill",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "jsCode": { "type": "string" },
+        "schema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "testing", "active", "failed"]
+        },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "name", "description", "jsCode", "schema", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserContext"
+      },
+      "description": "Stores user long term context and preferences"
+    },
+    "users/{userId}/memories/{memoryId}": {
+      "schema": {
+        "$ref": "#/entities/MemoryEntry"
+      },
+      "description": "Stores recent short term events for a user"
+    },
+    "tasks/{taskId}": {
+      "schema": {
+        "$ref": "#/entities/TaskRecord"
+      },
+      "description": "Stores task queue and state"
+    },
+    "skills/{skillId}": {
+      "schema": {
+        "$ref": "#/entities/AgentSkill"
+      },
+      "description": "Stores dynamically generated agent tools"
+    },
+    "life_graphs/{userId}": {
+      "schema": {
+        "title": "SemanticGraph",
+        "type": "object",
+        "description": "Semantic user memory relationship graph",
+        "properties": {
+          "nodes": { "type": "object", "additionalProperties": true },
+          "edges": { "type": "array" }
+        }
+      },
+      "description": "Stores user knowledge graph explicitly"
+    }
+  }
+}

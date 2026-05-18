@@ -6,6 +6,7 @@ import {
   FileText, Zap, Scissors, BookOpen, Lightbulb, Moon, Sun,
   AlertTriangle
 } from 'lucide-react';
+import { IdleBrain } from './modules/agent/IdleBrain';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 let rawApiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
@@ -118,7 +119,8 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   
-  const [agentMode, setAgentMode] = useState(false);
+  const [agentMode, setAgentMode] = useState(true);
+  const [currentAgentTaskId, setCurrentAgentTaskId] = useState<string | null>(null);
   const [showInputOptions, setShowInputOptions] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -228,6 +230,23 @@ export default function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Strategy #3: Proactive Reverse Prompting (Idle Brain)
+  useEffect(() => {
+    if (agentMode) {
+      const idleBrain = IdleBrain.getInstance();
+      idleBrain.setCallback((msg) => {
+        const aiMsg: Message = { role: 'assistant', content: msg, timestamp: Date.now() };
+        setMessages(prev => [...prev, aiMsg]);
+        showToast('Zenox has a proactive suggestion for you', 'info');
+      });
+      idleBrain.start('ai-tester');
+      
+      return () => {
+        idleBrain.stop();
+      };
+    }
+  }, [agentMode]);
 
   useEffect(() => {
     if (!showScrollBtn) {
@@ -409,6 +428,68 @@ export default function App() {
     abortControllerRef.current = new AbortController();
 
     try {
+      if (agentMode) {
+        setMsgStatus('thinking');
+        setStreamingContent("> Initializing Zenox Subroutines...\n");
+        const agent = (window as any).awaisAgent;
+        if (!agent) throw new Error("AgentCore not initialized");
+        const taskId = await agent.submitTask('ai-tester', userMsg.content);
+        setCurrentAgentTaskId(taskId);
+        
+        import('firebase/firestore').then(({ doc, onSnapshot }) => {
+          import('./modules/db/firebase').then(({ db }) => {
+            const unsub = onSnapshot(doc(db, 'tasks', taskId), (snapshot) => {
+              const data = snapshot.data();
+              if (data) {
+                let updatedStream = `> Task ID: ${taskId}\n> Status: ${data.status.toUpperCase()}\n`;
+                if (data.prompt) {
+                  updatedStream += `> Pivot focus: ${data.prompt}\n`;
+                }
+                if (data.status === 'completed') {
+                   updatedStream += `\n**Task Completed!**\n\n**Deployment URL:** ${data.result?.deployUrl || 'N/A'}\n\n**Execution Result:**\n\`\`\`\n${data.result?.executionResult}\n\`\`\`\n\n**Generated Code:**\n\`\`\`javascript\n${data.result?.generatedCode}\n\`\`\``;
+                   
+                   const aiMsg: Message = { role: 'assistant', content: updatedStream, timestamp: Date.now() };
+                   const finalMessages = [...newMessages, aiMsg];
+                   setMessages(finalMessages);
+                   setStreamingContent('');
+                   saveCurrentConversation(finalMessages, activeId);
+                   
+                   setIsLoading(false);
+                   setMsgStatus('idle');
+                   setCurrentAgentTaskId(null);
+                   unsub();
+                } else if (data.status === 'failed') {
+                   updatedStream += `\n**Error:** ${data.error}`;
+                   
+                   const aiMsg: Message = { role: 'assistant', content: updatedStream, timestamp: Date.now() };
+                   const finalMessages = [...newMessages, aiMsg];
+                   setMessages(finalMessages);
+                   setStreamingContent('');
+                   saveCurrentConversation(finalMessages, activeId);
+                   
+                   setIsLoading(false);
+                   setMsgStatus('idle');
+                   setCurrentAgentTaskId(null);
+                   unsub();
+                } else {
+                   setStreamingContent(updatedStream + "> Agent is orchestrating resources and evaluating logic...\n> Check the browser console for Sandbox execution logs.");
+                }
+              }
+            }, (error) => {
+                console.error("Firestore Error:", error);
+                const aiMsg: Message = { role: 'assistant', content: `[SYSTEM_ERROR] Firestore synchronization failed: ${error.message}`, timestamp: Date.now() };
+                setMessages([...newMessages, aiMsg]);
+                setStreamingContent('');
+                setIsLoading(false);
+                setMsgStatus('idle');
+                setCurrentAgentTaskId(null);
+                unsub();
+            });
+          });
+        });
+        return;
+      }
+
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
@@ -762,7 +843,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-bold font-sans text-white tracking-tight leading-none bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">Zenox</h1>
-              <p className="text-[9px] text-[#888] uppercase tracking-[0.2em] font-medium mt-1">Awais Codex</p>
+              <p className="text-[9px] text-[#888] uppercase tracking-[0.2em] font-medium mt-1">Zenox System</p>
             </div>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="xl:hidden p-2 text-[#555] hover:text-white bg-white/5 rounded-full" aria-label="Close sidebar">
@@ -877,7 +958,7 @@ export default function App() {
           <div className="text-sm text-[#888] font-semibold tracking-wide">
             {currentConversationId 
               ? conversations.find(c=>c.id===currentConversationId)?.title || 'New Session'
-              : 'Zenox - Awais Codex'}
+              : 'Zenox System'}
           </div>
           <div className="flex items-center gap-3">
             {messages.length > 1 && (
@@ -1186,17 +1267,56 @@ export default function App() {
                   setInputValue(e.target.value);
                   if (e.target.value.length === 0) setSuggestions([]);
                 }}
-                onKeyDown={handleKeyDown}
-                placeholder={agentMode ? "Agent ready... describe the task" : "Message Zenox..."}
-                disabled={isLoading}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (agentMode && (msgStatus === 'thinking' || msgStatus === 'streaming') && inputValue.trim()) {
+                      const agent = (window as any).awaisAgent;
+                      if (agent && currentAgentTaskId) {
+                        agent.pivotTask(currentAgentTaskId, inputValue.trim());
+                        setInputValue('');
+                      }
+                    } else if (!isLoading) {
+                      handleSend();
+                    }
+                  }
+                }}
+                placeholder={
+                  (agentMode && (msgStatus === 'thinking' || msgStatus === 'streaming'))
+                    ? "Micro-Steer / Pivot (e.g. Stop and focus on Y...)"
+                    : agentMode 
+                      ? "Agent ready... describe the task" 
+                      : "Message Zenox..."
+                }
+                disabled={!agentMode && isLoading}
                 rows={1}
                 className="flex-1 max-h-[200px] min-h-[44px] bg-transparent resize-none outline-none py-3 px-2 text-base md:text-sm text-[#f0f0f0] placeholder:text-[#555555] disabled:opacity-50"
                 style={{ height: inputValue.split('\n').length > 1 ? `${Math.min(inputValue.split('\n').length * 24 + 28, 200)}px` : '44px' }}
               />
               
               <div className="flex-shrink-0 self-end mb-1 mr-1 ml-1">
-                {isLoading ? (
-                  <button onClick={stopGeneration} className="p-3 md:p-2 rounded-xl bg-red-500/20 text-red-400" aria-label="Stop generation">
+                {(agentMode && (msgStatus === 'thinking' || msgStatus === 'streaming')) ? (
+                  <button 
+                    onClick={() => {
+                      const agent = (window as any).awaisAgent;
+                      if (agent && currentAgentTaskId && inputValue.trim()) {
+                        agent.pivotTask(currentAgentTaskId, inputValue.trim());
+                        setInputValue('');
+                      } else {
+                        stopGeneration();
+                      }
+                    }}
+                    className={`p-3 md:p-2 rounded-xl transition-transform active:scale-95 flex items-center justify-center ${
+                      inputValue.trim() 
+                        ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.5)] hover:bg-purple-500' 
+                        : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                    }`}
+                    title={inputValue.trim() ? "Pivot Task" : "Stop Generation"}
+                  >
+                    {inputValue.trim() ? <Send size={18} /> : <Square size={18} fill="currentColor" />}
+                  </button>
+                ) : isLoading ? (
+                  <button onClick={stopGeneration} className="p-3 md:p-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all" aria-label="Stop generation">
                     <Square size={18} fill="currentColor" />
                   </button>
                 ) : (
@@ -1393,6 +1513,30 @@ export default function App() {
                   )}
                 </div>
 
+                <div className="mt-8 mb-6">
+                  <span className="text-xs text-[#888] font-medium block mb-3">Zenox Blueprint Export</span>
+                  <p className="text-[10px] text-[#555] mb-3 leading-relaxed">
+                    Compile your agent's synthesized skills, semantic relationship graph, and core configuration into a shareable serialized JSON module.
+                  </p>
+                  <button 
+                    onClick={async () => {
+                      const { BlueprintManager } = await import('./modules/agent/BlueprintManager');
+                      const json = await BlueprintManager.getInstance().exportBlueprint('ai-tester');
+                      const blob = new Blob([json], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `zenox_blueprint_${Date.now()}.json`;
+                      a.click();
+                      showToast('Blueprint exported successfully', 'success');
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl transition-all text-xs font-bold uppercase tracking-widest"
+                  >
+                    <Download size={16} />
+                    Export Codex Blueprint
+                  </button>
+                </div>
+
                 <div className="space-y-3">
                   {messages.length > 0 && (
                     <button 
@@ -1429,7 +1573,7 @@ export default function App() {
                 
                 <div className="glass-panel p-5 rounded-2xl border-white/5 mb-6 relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none group-hover:bg-green-500/10 transition-colors duration-1000"></div>
-                  <div className="text-lg font-black font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-[#888] tracking-tight block mb-1">Zenox - Awais Codex</div>
+                  <div className="text-lg font-black font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-[#888] tracking-tight block mb-1">Zenox</div>
                   <div className="text-[10px] text-[#666] font-mono tracking-widest uppercase block mb-4">v4.1.0-alpha</div>
                   <div className="text-[10px] text-green-400 font-bold tracking-widest uppercase flex items-center gap-2 mt-1">
                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" /> Neural Link Active

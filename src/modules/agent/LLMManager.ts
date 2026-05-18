@@ -7,7 +7,7 @@ export class LLMManager {
   private constructor() {
     // In a real production app, you might route this through your backend to protect the key.
     // For this module design, we use VITE_GEMINI_API_KEY which the client can provide,
-    // or fallback to the Awais Codex default if available.
+    // or fallback to the Zenox default if available.
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_SYNOD_API_KEY || '';
     this.ai = new GoogleGenAI({ apiKey });
   }

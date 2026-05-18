@@ -4,6 +4,7 @@ import { RenderManager } from '../render/RenderManager';
 import { LLMManager } from './LLMManager';
 import { MemoryManager } from './MemoryManager';
 import { TaskManager, TaskRecord } from './TaskManager';
+import { LifeGraph } from './LifeGraph';
 
 export class AgentCore {
   private github: GithubManager;
@@ -12,6 +13,7 @@ export class AgentCore {
   private llm: LLMManager;
   private memory: MemoryManager;
   private taskManager: TaskManager;
+  private lifeGraph: LifeGraph;
   private isProcessing = false;
 
   constructor() {
@@ -21,6 +23,7 @@ export class AgentCore {
     this.llm = LLMManager.getInstance();
     this.memory = MemoryManager.getInstance();
     this.taskManager = TaskManager.getInstance();
+    this.lifeGraph = LifeGraph.getInstance();
   }
 
   /**
@@ -30,6 +33,22 @@ export class AgentCore {
     const taskId = await this.taskManager.enqueueTask(userId, taskPrompt);
     this.processQueue();
     return taskId;
+  }
+
+  /**
+   * Strategy #2: Glass-Box UX & Micro-Steering
+   * Allows the user to interrupt or pivot the agent mid-task.
+   */
+  public async pivotTask(taskId: string, newPrompt: string) {
+    console.log(`[AgentCore] Pivoting task ${taskId} with new instruction: ${newPrompt}`);
+    await this.taskManager.updateTaskState(taskId, 'processing', { 
+      prompt: newPrompt 
+    });
+    // Record pivot action in memory so context is not lost
+    await this.memory.addMemoryEntry('ai-tester', `[Pivot Instruction] User interrupted with: ${newPrompt}`);
+    
+    // For a deeper abort, we would signal the LLMManager or SandboxManager to abort their promises.
+    // For now, this updates the data state and memory so subsequent actions reflect the pivot.
   }
 
   /**
@@ -61,10 +80,14 @@ export class AgentCore {
       
       // Load Memory Context
       const recentMemories = await this.memory.getRecentMemories(task.userId);
-      const memoryContextString = recentMemories.map(m => m.content).join('\\n');
+      const memoryContextString = recentMemories.map(m => m.content).join('\n');
+      
+      // Load Semantic Graph
+      const graph = await this.lifeGraph.getGraph(task.userId);
+      const graphEdges = graph.edges.map(e => `${e.sourceId} -> ${e.relation} -> ${e.targetId}`).join(', ');
 
       // 0. LLM Phase (Generate Code)
-      const promptContext = `Context from past memory:\n${memoryContextString}\n\nTask: ${task.prompt}`;
+      const promptContext = `Context from past memory:\n${memoryContextString}\n\nRelationships:\n${graphEdges}\n\nTask: ${task.prompt}`;
       const generatedCode = await this.llm.generateCode(
          `Write a JavaScript function that implements the following feature completely. Include console.log at the end to demonstrate output.\n${promptContext}`,
          'javascript'
@@ -75,8 +98,11 @@ export class AgentCore {
       const codeResult = await this.sandbox.executeCode(generatedCode, 'javascript');
       console.log('[AgentCore] Sandbox execution completed:', codeResult);
 
+      // Extract new semantic relationship in background
+      this.lifeGraph.extractAndStoreFact(task.userId, task.prompt).catch(console.error);
+
       // 2. Github Phase (Commit / Version Control)
-      const committed = await this.github.commitAndPush('user-project-repo', [{ name: 'feature.js', content: generatedCode }], 'Auto-update by Awais Codex Agent');
+      const committed = await this.github.commitAndPush('user-project-repo', [{ name: 'feature.js', content: generatedCode }], 'Auto-update by Zenox Agent');
       if (committed) {
         console.log('[AgentCore] Code successfully pushed to version control.');
       }
