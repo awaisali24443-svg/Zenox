@@ -12,10 +12,10 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
 };
 
-const app = initializeApp(firebaseConfig);
+const app = firebaseConfig.apiKey ? initializeApp(firebaseConfig) : null as any;
 
 // BUG FIX: Use DEFAULT database — no named database ID.
 // Named database caused backend/frontend split-brain where
 // tasks written by backend were invisible to frontend.
-export const db = getFirestore(app);
-export const auth = getAuth(app);
+export const db = app ? getFirestore(app) : null as any;
+export const auth = app ? getAuth(app) : null as any;

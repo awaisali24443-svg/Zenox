@@ -444,7 +444,7 @@ async def agent_execute(request: Request, _=Depends(verify_api_key)):
             if task_id:
                 update_progress_all_steps(task_id, STEP_NAMES, "error", "E2B_API_KEY not set")
             return {
-                "result": "E2B_API_KEY not set \u2014 add it to Render env vars",
+                "result": "E2B_API_KEY not set \u2014 add it to backend env vars",
                 "success": False
             }
     except Exception as e:
