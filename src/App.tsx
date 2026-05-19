@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Menu, Plus, Copy, Send, Trash2, Check, CheckCircle2, 
   XCircle, Terminal, Square, RefreshCw, Download, Settings,
-  ArrowDown, Search, MessageSquare, X, ImageIcon, Mic, MicOff,
+  ArrowDown, ArrowUp, Search, MessageSquare, X, ImageIcon, Mic, MicOff,
   FileText, Zap, Scissors, BookOpen, Lightbulb, Moon, Sun,
-  AlertTriangle
+  AlertTriangle, AlertCircle, Info
 } from 'lucide-react';
 import { IdleBrain } from './modules/agent/IdleBrain';
 
@@ -41,27 +41,59 @@ declare global {
   }
 }
 
-const ZenoxLogo = ({ size = 32, className = "" }: { size?: number, className?: string }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    xmlns="http://www.w3.org/2000/svg"
-    className={`shrink-0 ${className}`}
+const ZenoxLogo = ({ size = 36, animate = false, className = '' }: { size?: number; animate?: boolean; className?: string }) => (
+  <div
+    style={{ width: size, height: size }}
+    className={`relative flex items-center justify-center flex-shrink-0 ${animate ? 'group' : ''} ${className}`}
   >
-    <path d="M12 2L22 7.7735V16.2265L12 22L2 16.2265V7.7735L12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M12 22V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M22 7.7735L12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M2 7.7735L12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx="12" cy="12" r="2.5" fill="currentColor" />
-    <circle cx="12" cy="2" r="1.5" fill="currentColor" />
-    <circle cx="22" cy="7.7735" r="1.5" fill="currentColor" />
-    <circle cx="2" cy="7.7735" r="1.5" fill="currentColor" />
-    <circle cx="22" cy="16.2265" r="1.5" fill="currentColor" />
-    <circle cx="2" cy="16.2265" r="1.5" fill="currentColor" />
-    <circle cx="12" cy="22" r="1.5" fill="currentColor" />
-  </svg>
+    {/* Outer glow ring */}
+    <div
+      style={{ width: size, height: size }}
+      className="absolute rounded-[28%] bg-gradient-to-br from-emerald-400/20 to-green-600/20 
+        blur-sm scale-110"
+    />
+    {/* Main body */}
+    <div
+      style={{ width: size, height: size }}
+      className="relative rounded-[28%] bg-gradient-to-br from-[#1a1a1a] via-[#111] to-[#0a0a0a] 
+        border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.15)] 
+        flex items-center justify-center overflow-hidden"
+    >
+      {/* Shimmer layer */}
+      <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-emerald-500/5 to-transparent" />
+      
+      {/* Z lettermark */}
+      <svg
+        width={size * 0.55}
+        height={size * 0.55}
+        viewBox="0 0 24 24"
+        fill="none"
+      >
+        <path
+          d="M4 5h16M4 5l16 14M4 19h16"
+          stroke="url(#zGrad)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <defs>
+          <linearGradient id="zGrad" x1="4" y1="5" x2="20" y2="19">
+            <stop offset="0%" stopColor="#10b981" />
+            <stop offset="100%" stopColor="#34d399" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+    
+    {/* Online indicator dot */}
+    <div
+      style={{ width: size * 0.22, height: size * 0.22 }}
+      className="absolute -bottom-0.5 -right-0.5 rounded-full 
+        bg-gradient-to-br from-emerald-400 to-green-500 
+        border-2 border-[#0a0a0a]
+        shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+    />
+  </div>
 );
 
 const AgentProgressPanel = ({ 
@@ -101,46 +133,60 @@ const AgentProgressPanel = ({
   if (!isActive && progress.length === 0) return null;
   
   return (
-    <div className="mx-4 mb-4 p-4 bg-[#0d0d0d] border border-purple-500/20 
-      rounded-2xl">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
-        <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">
-          Agent Working
+    <div className="mx-4 mb-3 p-4 rounded-[18px] slide-up
+      bg-gradient-to-b from-[#0d1410] to-[#0a0f0a]
+      border border-emerald-900/20">
+      
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
+          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+            Agent Working
+          </span>
+        </div>
+        <span className="text-[9px] text-[#2a2a2a] font-mono">
+          {progress.filter(p => p.status === 'done').length}/{steps.length} done
         </span>
       </div>
-      <div className="space-y-2">
+      
+      {/* Progress bar */}
+      <div className="w-full h-0.5 bg-[rgba(255,255,255,0.04)] rounded-full mb-4">
+        <div 
+          className="h-full bg-gradient-to-r from-emerald-600 to-green-500 
+            rounded-full transition-all duration-700 ease-out"
+          style={{
+            width: `${steps.length ? 
+              (progress.filter(p=>p.status==='done').length / steps.length) * 100 : 0}%`
+          }}
+        />
+      </div>
+      
+      {/* Steps */}
+      <div className="space-y-2.5">
         {steps.map((step, i) => {
-          const progressItem = progress[i];
-          const isDone = progressItem?.status === 'done';
-          const isRunning = progressItem?.status === 'running' || i === currentStep;
-          const isFailed = progressItem?.status === 'error';
+          const prog = progress[i];
+          const done = prog?.status === 'done';
+          const running = !done && i === progress.filter(p=>p.status==='done').length;
+          const pending = !done && !running;
           
           return (
-            <div key={i} className="flex items-start gap-3">
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center 
-                shrink-0 mt-0.5 text-[10px] font-bold transition-all ${
-                isDone ? 'bg-green-500 text-black' :
-                isFailed ? 'bg-red-500 text-white' :
-                isRunning ? 'bg-purple-500 text-white animate-pulse' :
-                'bg-[#1a1a1a] text-[#444] border border-[#2a2a2a]'
+            <div key={i} className="flex items-center gap-3">
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center 
+                flex-shrink-0 transition-all duration-300 ${
+                done    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
+                running ? 'bg-emerald-500/20 border border-emerald-500/50 animate-pulse' :
+                          'bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)]'
               }`}>
-                {isDone ? '✓' : isFailed ? '✗' : isRunning ? '→' : i + 1}
+                {done && <Check size={9} className="text-black" strokeWidth={3}/>}
+                {running && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"/>}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm transition-colors ${
-                  isDone ? 'text-[#666] line-through' :
-                  isRunning ? 'text-white font-medium' :
-                  'text-[#444]'
-                }`}>
-                  {step}
-                </p>
-                {progressItem?.detail && (
-                  <p className="text-[10px] text-[#555] mt-0.5 truncate font-mono">
-                    {progressItem.detail}
-                  </p>
-                )}
-              </div>
+              <span className={`text-[11.5px] transition-colors ${
+                done    ? 'text-[#3a3a3a] line-through' :
+                running ? 'text-[#ccc] font-medium' :
+                          'text-[#2a2a2a]'
+              }`}>
+                {step}
+              </span>
             </div>
           );
         })}
@@ -176,6 +222,22 @@ export default function App() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [apiKeysStatus, setApiKeysStatus] = useState<Record<string, string> | null>(null);
+  
+  useEffect(() => {
+    if (settingsOpen) {
+      setApiKeysStatus(null);
+      const API_URL = import.meta.env.VITE_API_URL || '';
+      const API_KEY = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+      fetch(`${API_URL}/api/health/keys`, {
+        headers: { 'X-API-Key': API_KEY }
+      })
+      .then(res => res.json())
+      .then(data => setApiKeysStatus(data))
+      .catch(() => setApiKeysStatus({ 'Backend': 'Offline ❌' }));
+    }
+  }, [settingsOpen]);
+
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('zenox-theme') as 'dark' | 'light') || 'dark');
   const [fontSize, setFontSize] = useState(() => localStorage.getItem('zenox-font-size') || 'M');
   const [responseStyle, setResponseStyle] = useState<ResponseStyle>(
@@ -213,7 +275,8 @@ export default function App() {
     const maxAttempts = 60; // 5 minutes max
     let attempts = 0;
     
-    // Fallback: poll TaskManager memory temporarily because projects are only saved at the END
+    const agent = (window as any).awaisAgent;
+
     const poll = setInterval(async () => {
       attempts++;
       if (attempts > maxAttempts) {
@@ -223,6 +286,25 @@ export default function App() {
         return;
       }
       
+      const localTask = agent?.taskManager?.getTask(taskId);
+      if (localTask && localTask.status === 'failed') {
+        clearInterval(poll);
+        // Add failure message to chat
+        const errorMsg: Message = {
+          role: 'assistant',
+          content: `❌ Task Failed:\n\n${localTask.error || "Unknown error occurred during task execution."}`,
+          timestamp: Date.now()
+        };
+        const finalMessages = [...newMessages, errorMsg];
+        setMessages(finalMessages);
+        setStreamingContent('');
+        saveCurrentConversation(finalMessages, activeId);
+        setIsLoading(false);
+        setMsgStatus('idle');
+        setCurrentAgentTaskId(null);
+        return;
+      }
+
       try {
         const res = await fetch(
           `${API_URL}/api/projects/result/${taskId}`,
@@ -410,15 +492,18 @@ export default function App() {
     }
   }, [agentMode]);
 
+  const isUserScrolling = useRef(false);
+
   useEffect(() => {
-    if (!showScrollBtn) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!isUserScrolling.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, msgStatus]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    isUserScrolling.current = !isNearBottom;
     setShowScrollBtn(!isNearBottom && messages.length > 0);
   };
 
@@ -536,6 +621,8 @@ export default function App() {
   };
 
   const handleSendWithMessage = async (overrideMessage: string) => {
+    isUserScrolling.current = false;
+    setShowScrollBtn(false);
     if (!overrideMessage.trim() && !selectedImage && !uploadedFile || isLoading) return;
 
     const savedMemory = processMemoryCommand(overrideMessage);
@@ -701,6 +788,8 @@ export default function App() {
   const handleSend = () => handleSendWithMessage(inputValue);
 
   const startNewChat = () => {
+    isUserScrolling.current = false;
+    setShowScrollBtn(false);
     setCurrentConversationId(null);
     const welcomeMsg: Message = {
       role: 'assistant',
@@ -714,6 +803,8 @@ export default function App() {
   };
 
   const loadConversation = (id: string) => {
+    isUserScrolling.current = false;
+    setShowScrollBtn(false);
     const conv = conversations.find(c => c.id === id);
     if (conv) {
       setCurrentConversationId(conv.id);
@@ -967,48 +1058,61 @@ export default function App() {
       {/* Sidebar */}
       <aside className={`${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } xl:translate-x-0 fixed xl:static inset-y-0 left-0 w-full md:w-[280px] bg-[#050505]/95 backdrop-blur-xl border-r border-white/5 flex flex-col z-50 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] shadow-[4px_0_24px_rgba(0,0,0,0.5)]`}>
-        <div className="flex items-center justify-between xl:justify-start gap-3 p-6 border-b border-white/5">
-          <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-gradient-to-br from-green-500/20 to-purple-500/20 rounded-xl border border-white/10 shadow-[0_0_15px_rgba(34,197,94,0.1)]">
-              <ZenoxLogo size={28} className="text-green-500 group-hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all rounded-xl" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold font-sans text-white tracking-tight leading-none bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">Zenox</h1>
-              <p className="text-[9px] text-[#888] uppercase tracking-[0.2em] font-medium mt-1">Zenox System</p>
-            </div>
+      } xl:translate-x-0 fixed xl:static inset-y-0 left-0 w-full md:w-[280px] bg-[#0b0b0b] border-r border-[rgba(255,255,255,0.06)] flex flex-col z-50 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] shadow-[4px_0_24px_rgba(0,0,0,0.5)]`}>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-[rgba(255,255,255,0.05)]">
+          <ZenoxLogo size={34} />
+          <div className="flex-1 min-w-0">
+            <h1 className="text-[15px] font-bold text-white tracking-[-0.3px]">
+              Zenox
+            </h1>
+            <p className="text-[10px] text-[#3a3a3a] tracking-[0.08em] uppercase font-medium">
+              by awais
+            </p>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="xl:hidden p-2 text-[#555] hover:text-white bg-white/5 rounded-full" aria-label="Close sidebar">
-            <X size={16} />
-          </button>
+          {/* Status badge */}
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[9px] 
+            font-bold uppercase tracking-wider ${
+            backendStatus === 'online' 
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+              : 'bg-red-500/10 text-red-400 border border-red-500/20'
+          }`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              backendStatus === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+            }`} />
+            {backendStatus === 'online' ? 'live' : 'off'}
+          </div>
         </div>
 
-        <div className="p-5 space-y-4">
-          <button 
-            onClick={startNewChat}
-            className="w-full relative overflow-hidden flex items-center justify-between gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl py-3 px-4 transition-all duration-300 group shadow-lg active:scale-[0.98]"
-            aria-label="New Chat"
-          >
-            <span className="font-semibold text-sm tracking-wide">New Session</span>
-            <div className="bg-white/10 p-1 rounded-md text-white/70 group-hover:bg-green-500 group-hover:text-white transition-colors">
-              <Plus size={16} />
-            </div>
+        <div className="px-3 py-3">
+          <button onClick={startNewChat}
+            className="w-full flex items-center justify-center gap-2 
+              py-2.5 px-4 rounded-[14px] text-[13px] font-semibold
+              bg-gradient-to-r from-emerald-600 to-green-600
+              hover:from-emerald-500 hover:to-green-500
+              text-white transition-all duration-200 active:scale-[0.98]
+              shadow-[0_2px_12px_rgba(16,185,129,0.25)]
+              hover:shadow-[0_4px_20px_rgba(16,185,129,0.4)]">
+            <Plus size={15} className="opacity-90" />
+            New Chat
           </button>
-          
-          <div className="relative group">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#555] group-focus-within:text-green-400 transition-colors" />
-            <input 
+        </div>
+        
+        <div className="px-3 pb-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-[10px]
+            bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)]">
+            <Search size={12} className="text-[#333] shrink-0" />
+            <input
               id="search-input"
-              type="text" 
-              placeholder="Search cortex..." 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-green-500/50 focus:bg-[#111] transition-all placeholder-[#444] text-[#eee] shadow-inner"
+              placeholder="Search..."
+              className="flex-1 bg-transparent text-xs text-[#888] 
+                placeholder:text-[#333] outline-none min-w-0"
             />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1 scrollbar-thin">
           {conversations.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full py-12 px-4 text-center opacity-60">
               <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mb-4 border border-white/5">
@@ -1021,38 +1125,39 @@ export default function App() {
             </div>
           )}
           
-          {filteredConversations.map((conv) => (
-            <div 
-              key={conv.id}
-              onClick={() => loadConversation(conv.id)}
-              className={`group flex items-center justify-between p-3.5 rounded-xl cursor-pointer transition-all duration-200 relative overflow-hidden ${
-                currentConversationId === conv.id 
-                  ? 'bg-white/10 text-white shadow-lg border border-white/10' 
-                  : 'hover:bg-white/5 text-[#888] border border-transparent'
-              }`}
-            >
-              {currentConversationId === conv.id && (
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-green-400 to-green-600 rounded-r-sm shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
-              )}
-              <div className="flex flex-col overflow-hidden w-full pl-1">
-                <div className="truncate text-sm pr-6 font-semibold tracking-tight">{conv.title || "Untitled Session"}</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] bg-black/40 px-1.5 py-0.5 rounded text-[#777] font-mono">{conv.messages.length}</span>
-                  <span className="text-[10px] text-[#555] font-medium">{getTimeAgo(conv.createdAt)}</span>
-                </div>
-              </div>
+          {filteredConversations.map((conv) => {
+            const isActive = currentConversationId === conv.id;
+            return (
               <button 
-                onClick={(e) => deleteConversation(e, conv.id)}
-                className="absolute right-3 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 p-2 text-[#555] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                aria-label="Delete chat"
-              >
-                <Trash2 size={14} />
+                key={conv.id}
+                onClick={() => loadConversation(conv.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 
+                  mx-1 rounded-[12px] text-left transition-all duration-150 group
+                  ${isActive 
+                    ? 'bg-[rgba(16,185,129,0.08)] border border-[rgba(16,185,129,0.15)]' 
+                    : 'hover:bg-[rgba(255,255,255,0.03)] border border-transparent'
+                  }`}>
+                <MessageSquare size={13} className={isActive ? 'text-emerald-400' : 'text-[#333]'} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[12px] truncate font-medium ${isActive ? 'text-white' : 'text-[#666]'}`}>
+                    {conv.title || "Untitled Session"}
+                  </p>
+                  <p className="text-[9px] text-[#2a2a2a] mt-0.5">
+                    {getTimeAgo(conv.createdAt)}
+                  </p>
+                </div>
+                <div 
+                  onClick={(e) => { e.stopPropagation(); deleteConversation(e, conv.id); }}
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded-md
+                    text-[#333] hover:text-red-400 transition-all shrink-0">
+                  <X size={11} />
+                </div>
               </button>
-            </div>
-          ))}
+            );
+          })}
 
           {userProjects.length > 0 && (
-            <div className="border-t border-[#1a1a1a] mt-2 pt-2">
+            <div className="border-t border-[#1a1a1a] mt-2 pt-2 mx-1">
               <button 
                 onClick={() => setShowProjects(!showProjects)}
                 className="w-full flex items-center justify-between px-3 py-2 
@@ -1066,15 +1171,15 @@ export default function App() {
               {showProjects && (
                 <div className="space-y-1 pb-2">
                   {userProjects.slice(0,5).map(p => (
-                    <div key={p.id} className="px-3 py-2 rounded-xl hover:bg-[#111] 
+                    <div key={p.id} className="px-3 py-2 rounded-[12px] hover:bg-[rgba(255,255,255,0.03)] 
                       transition-colors cursor-default">
-                      <p className="text-xs text-[#888] truncate font-medium">
+                      <p className="text-[12px] text-[#888] truncate font-medium">
                         {(p.prompt || 'Untitled Project').slice(0, 35)}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         {p.deploy_url && p.deploy_url.startsWith('http') && (
                           <a href={p.deploy_url} target="_blank" rel="noreferrer"
-                            className="text-[10px] text-green-500 hover:text-green-400">
+                            className="text-[10px] text-emerald-500 hover:text-emerald-400">
                             Live ↗
                           </a>
                         )}
@@ -1093,18 +1198,10 @@ export default function App() {
           )}
         </div>
 
-        <div className="p-5 border-t border-white/5 bg-[#0a0a0a]/50 flex justify-between items-center backdrop-blur-md">
-          <div className="flex items-center gap-2.5 text-xs font-mono">
-            {backendStatus === 'online' ? (
-              <><div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse"></div> <span className="text-green-500/80 tracking-wider">ONLINE</span></>
-            ) : backendStatus === 'offline' ? (
-              <><div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"></div> <span className="text-red-500/80 tracking-wider">OFFLINE</span></>
-            ) : (
-              <><div className="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.6)] animate-pulse"></div> <span className="text-yellow-500/80 tracking-wider">SYNCING</span></>
-            )}
-          </div>
-          <button onClick={() => setSettingsOpen(true)} className="p-2 text-[#666] hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all" aria-label="Settings">
-            <Settings size={16} />
+        <div className="p-3 border-t border-[rgba(255,255,255,0.04)] bg-transparent flex justify-between items-center mx-2 my-1">
+          <button onClick={() => setSettingsOpen(true)} className="p-2 w-full flex items-center justify-center gap-2 text-[12px] font-medium text-[#666] hover:text-white hover:bg-[rgba(255,255,255,0.04)] rounded-[12px] transition-all" aria-label="Settings">
+            <Settings size={14} />
+            Settings
           </button>
         </div>
       </aside>
@@ -1158,128 +1255,186 @@ export default function App() {
           <div className="max-w-3xl mx-auto h-full flex flex-col justify-end">
             
             {(messages.length === 0 || (messages.length === 1 && messages[0].content.includes('explore today'))) && !streamingContent ? (
-              <div className="flex-1 flex flex-col items-center justify-center -mt-20">
-                <div className="p-4 bg-gradient-to-br from-green-500/10 to-purple-500/10 rounded-3xl border border-white/5 shadow-[0_0_30px_rgba(34,197,94,0.05)] mb-6 animate-[fadeIn_0.3s_ease]">
-                  <ZenoxLogo size={64} className="text-green-500 drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]" />
+              <div className="h-full flex flex-col items-center justify-center 
+                px-6 py-12 fade-in">
+                
+                {/* Logo with glow */}
+                <div className="relative mb-8">
+                  <div className="absolute inset-0 bg-emerald-500/10 blur-2xl rounded-full scale-150" />
+                  <ZenoxLogo size={56} animate />
                 </div>
-                <h2 className="text-4xl sm:text-5xl font-bold font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-white/50 tracking-tight mb-3 text-center animate-[fadeIn_0.5s_ease]">
-                  How can I help you today?
-                </h2>
-                <p className="text-base text-[#666] mb-12 text-center animate-[fadeIn_0.7s_ease] font-medium max-w-md">
-                  Zenox is ready to code, assist, and execute autonomous tasks for you.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl px-4 animate-[fadeIn_0.9s_ease]">
+                
+                {/* Headline */}
+                <div className="text-center mb-2">
+                  <h1 className="text-[28px] font-bold text-white tracking-[-0.5px] mb-2">
+                    What can I help you with?
+                  </h1>
+                  <p className="text-[13px] text-[#3a3a3a] font-medium">
+                    Chat, build, research — Zenox handles it all
+                  </p>
+                </div>
+                
+                {/* Agent mode badge */}
+                {agentMode && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                    bg-emerald-500/8 border border-emerald-500/20 mb-8 mt-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                      Agent Mode Active
+                    </span>
+                  </div>
+                )}
+                
+                {!agentMode && <div className="mb-8" />}
+                
+                {/* Example cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-lg">
                   {[
-                    "Deploy a new React component",
-                    "Analyze my Python script",
-                    "Optimize this algorithm",
-                    "Build an autonomous agent"
-                  ].map((prompt, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        setInputValue(prompt);
-                        setTimeout(() => handleSendWithMessage(prompt), 10);
-                      }}
-                      className="group p-5 text-left border border-white/5 glass-panel md:hover:bg-white/5 rounded-2xl text-[#888] transition-all duration-300 transform md:hover:-translate-y-1 md:hover:shadow-[0_10px_30px_rgba(0,0,0,0.3)] md:hover:border-green-500/30"
-                    >
-                      <div className="font-semibold text-sm group-hover:text-white transition-colors">{prompt}</div>
-                      <div className="text-[10px] text-[#555] uppercase tracking-widest mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Press to explore &rarr;</div>
+                    { icon: '⚡', text: 'Build a React dashboard', tag: 'Code' },
+                    { icon: '🔍', text: 'Research quantum computing', tag: 'Research' },
+                    { icon: '🌐', text: 'Create a landing page', tag: 'Build' },
+                    { icon: '📊', text: 'Explain machine learning', tag: 'Learn' },
+                  ].map((ex, i) => (
+                    <button key={i}
+                      style={{animationDelay:`${i*60}ms`}}
+                      onClick={() => handleSendWithMessage(ex.text)}
+                      className="group flex items-center gap-3 p-3.5 rounded-[14px]
+                        bg-[#0f0f0f] border border-[rgba(255,255,255,0.06)]
+                        hover:border-[rgba(16,185,129,0.25)] hover:bg-[#111]
+                        transition-all duration-200 text-left slide-up
+                        hover:shadow-[0_4px_20px_rgba(16,185,129,0.06)]">
+                      <span className="text-xl leading-none">{ex.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12.5px] text-[#888] group-hover:text-[#ccc] 
+                          font-medium transition-colors truncate">
+                          {ex.text}
+                        </p>
+                      </div>
+                      <span className="text-[9px] font-bold text-[#2a2a2a] 
+                        group-hover:text-emerald-500/60 uppercase tracking-wider 
+                        transition-colors flex-shrink-0">
+                        {ex.tag}
+                      </span>
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
               <div className="space-y-8 pb-4">
-                {messages.map((msg, idx) => (
-                  <div key={idx} className={`w-full flex animate-[fadeIn_0.3s_ease] ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`relative max-w-[92%] sm:max-w-[85%] lg:max-w-[75%] rounded-3xl p-5 md:p-6 ${
-                      msg.role === 'user' 
-                        ? 'bg-gradient-to-br from-green-600/90 to-green-800/90 border border-green-400/30 text-white shadow-[0_10px_40px_rgba(34,197,94,0.15)] rounded-br-sm' 
-                        : 'glass-panel text-[#f0f0f0] rounded-bl-sm shadow-[0_10px_40px_rgba(0,0,0,0.3)]'
-                    }`}>
-                      {msg.role === 'assistant' && (
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(msg.content);
-                            setCopiedIndex(idx);
-                            setTimeout(() => setCopiedIndex(null), 2000);
-                            showToast('Copied to clipboard', 'success');
-                          }}
-                          className="absolute top-4 right-4 text-[#555] md:hover:text-white transition-colors bg-[#111] border border-white/5 p-2 rounded-lg"
-                          aria-label="Copy message"
-                        >
-                          {copiedIndex === idx ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-                        </button>
-                      )}
-                      
-                      {msg.role === 'user' && msg.imageUrl && (
-                        <div className="mb-4 rounded-xl overflow-hidden border border-white/20 shadow-lg inline-block">
-                          <img src={msg.imageUrl} alt="Attached" className="max-w-[200px] max-h-[200px] object-cover" />
+                {messages.map((msg, idx) => {
+                  const isLast = idx === messages.length - 1;
+                  return (
+                    msg.role === 'user' ? (
+                      <div key={idx} className="flex justify-end msg-animate">
+                        <div className="max-w-[78%] md:max-w-[65%]">
+                          <div className="px-4 py-3 rounded-[18px] rounded-br-[6px]
+                            bg-gradient-to-br from-[#1c2920] to-[#141a14]
+                            border border-emerald-900/30
+                            text-[13.5px] text-[#e8e8e8] leading-[1.6] font-[400]">
+                            {msg.imageUrl && (
+                              <div className="mb-3 rounded-xl overflow-hidden border border-white/10 shadow-lg inline-block">
+                                <img src={msg.imageUrl} alt="Attached" className="max-w-[200px] max-h-[200px] object-cover" />
+                              </div>
+                            )}
+                            <div className="whitespace-pre-wrap">{msg.content}</div>
+                          </div>
+                          <p className="text-[9px] text-[#2a2a2a] text-right mt-1 pr-1">
+                            {formatTime(msg.timestamp)}
+                          </p>
                         </div>
-                      )}
-                      
-                      <div className={`leading-relaxed text-[var(--chat-font-size)] [&_p]:mb-3 [&_li]:mb-1.5`}>
-                        {msg.role === 'assistant' && msg.content.includes('[SYSTEM_ERROR]') ? (
-                           <div className="text-yellow-400/90 whitespace-pre-wrap font-medium flex gap-2 items-start"><AlertTriangle size={18} className="shrink-0 mt-0.5" /> <span>{msg.content.replace('[SYSTEM_ERROR]', '').trim()}</span></div>
-                        ) : msg.role === 'assistant' ? (
-                          renderMarkdown(msg.content)
-                        ) : (
-                          <div className="whitespace-pre-wrap font-medium">{msg.content}</div>
-                        )}
                       </div>
-                      
-                      <div className={`text-[10px] uppercase tracking-[0.15em] mt-3 font-semibold ${
-                        msg.role === 'user' ? 'text-green-200/60' : 'text-[#555]'
-                      }`}>
-                        {formatTime(msg.timestamp)}
-                      </div>
-
-                      {msg.content.startsWith('[SYSTEM_ERROR]') && (
-                        <button 
-                          onClick={() => {
-                            // Find the last user message before this error
-                            const msgIndex = messages.indexOf(msg);
-                            const userMsgBefore = messages
-                              .slice(0, msgIndex)
-                              .filter(m => m.role === 'user')
-                              .at(-1);
-                            if (!userMsgBefore) return;
-                            setMessages(prev => prev.filter((_, i) => i < msgIndex));
-                            handleSendWithMessage(userMsgBefore.content);
-                          }}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-red-400 
-                            hover:text-red-300 border border-red-500/20 hover:border-red-500/40 bg-red-500/5 hover:bg-red-500/10
-                            rounded-lg px-3 py-2 mt-3 transition-all"
-                        >
-                          <RefreshCw size={12} />
-                          RETRY GENERATION
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                
-                {msgStatus === 'thinking' && (
-                  <div className="w-full flex justify-start animate-[fadeIn_0.3s_ease]">
-                    <div className="max-w-[92%] sm:max-w-[85%] lg:max-w-[70%] rounded-3xl p-5 glass-panel rounded-bl-sm border-t-2 border-t-green-500/50">
-                      <div className="flex items-center gap-3 text-[#777] text-xs font-medium uppercase tracking-widest">
-                        {mightSearch(messages[messages.length-1]?.content || '') ? (
-                          <>
-                            <span className="animate-spin text-green-500"><RefreshCw size={14} /></span>
-                            Scanning reality...
-                          </>
-                        ) : (
-                          <>
-                            <span className="flex gap-1">
-                              {[0,150,300].map(d => (
-                                <span key={d} className="w-2 h-2 bg-green-500 rounded-full animate-bounce"
-                                  style={{animationDelay:`${d}ms`}} />
-                              ))}
+                    ) : (
+                      <div key={idx} className="flex items-start gap-3 msg-animate group">
+                        <ZenoxLogo size={26} />
+                        <div className="flex-1 min-w-0 max-w-[78%] md:max-w-[68%]">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[11px] font-bold text-emerald-400 tracking-wide">
+                              ZENOX
                             </span>
-                            Zenox is thinking...
-                          </>
-                        )}
+                            <span className="text-[9px] text-[#2a2a2a] font-mono">
+                              {backendModel}
+                            </span>
+                          </div>
+                          <div className="px-4 py-3 rounded-[18px] rounded-tl-[6px]
+                            bg-[#0f0f0f] border border-[rgba(255,255,255,0.06)]
+                            text-[13.5px] text-[#d8d8d8] leading-[1.7] font-[400]
+                            markdown-body">
+                            {msg.content.includes('[SYSTEM_ERROR]') ? (
+                               <div className="text-yellow-400/90 whitespace-pre-wrap font-medium flex gap-2 items-start"><AlertTriangle size={18} className="shrink-0 mt-0.5" /> <span>{msg.content.replace('[SYSTEM_ERROR]', '').trim()}</span></div>
+                            ) : renderMarkdown(msg.content)}
+                          </div>
+                          {/* Action bar */}
+                          <div className="flex items-center gap-1 mt-1.5 opacity-0 
+                            group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => {
+                                navigator.clipboard.writeText(msg.content);
+                                setCopiedIndex(idx);
+                                setTimeout(() => setCopiedIndex(null), 2000);
+                                showToast('Copied to clipboard', 'success');
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px]
+                                text-[#333] hover:text-[#888] hover:bg-[rgba(255,255,255,0.04)]
+                                transition-all">
+                              {copiedIndex === idx ? <Check size={10}/> : <Copy size={10}/>}
+                              {copiedIndex === idx ? 'Copied' : 'Copy'}
+                            </button>
+                            {isLast && !isLoading && (
+                              <button onClick={handleRegenerate}
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px]
+                                  text-[#333] hover:text-[#888] hover:bg-[rgba(255,255,255,0.04)]
+                                  transition-all">
+                                <RefreshCw size={10}/> Retry
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  );
+                })}
+                
+                {msgStatus !== 'idle' && (
+                  <div className="w-full flex justify-start animate-[fadeIn_0.3s_ease]">
+                    <div className="flex items-center gap-3 p-4 
+                      bg-[#0f0f0f] rounded-[18px] border border-[rgba(255,255,255,0.06)]
+                      max-w-[200px]">
+                      {/* 3D rotating Z */}
+                      <div className="w-8 h-8 relative flex items-center justify-center flex-shrink-0">
+                        <div className="absolute inset-0 rounded-xl 
+                          bg-gradient-to-br from-emerald-500/20 to-green-600/10 
+                          animate-[breathe_2s_ease-in-out_infinite]" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                          className="animate-[spin3d_3s_linear_infinite]"
+                          style={{transformOrigin:'center', transform:'perspective(100px)'}}>
+                          <path d="M4 5h16M4 5l16 14M4 19h16"
+                            stroke="url(#thinkGrad)" strokeWidth="2.5"
+                            strokeLinecap="round" strokeLinejoin="round"/>
+                          <defs>
+                            <linearGradient id="thinkGrad" x1="4" y1="5" x2="20" y2="19">
+                              <stop offset="0%" stopColor="#10b981"/>
+                              <stop offset="100%" stopColor="#34d399"/>
+                            </linearGradient>
+                          </defs>
+                        </svg>
+                      </div>
+                      
+                      {/* Text with typing dots */}
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-medium text-[#666]">Zenox</span>
+                          <div className="flex items-center gap-0.5">
+                            {[0,200,400].map(delay => (
+                              <div key={delay}
+                                style={{animationDelay:`${delay}ms`}}
+                                className="w-1 h-1 rounded-full bg-emerald-500 
+                                  animate-[typing_1.2s_ease-in-out_infinite]" />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="text-[9px] text-[#333] mt-0.5">
+                          {msgStatus === 'thinking' ? 'Processing...' : 
+                           msgStatus === 'streaming' ? 'Writing response...' : 'Working...'}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1287,22 +1442,27 @@ export default function App() {
 
                 {streamingContent && (
                   <div className="w-full flex justify-start animate-[fadeIn_0.2s_ease]">
-                    <div className="max-w-[92%] sm:max-w-[85%] lg:max-w-[70%] rounded-2xl p-4 bg-[#111111] border border-[#1f1f1f] text-[#f0f0f0] rounded-bl-sm">
-                      <div className={`leading-relaxed text-[var(--chat-font-size)]`}>
-                        {renderMarkdown(streamingContent)}
-                        <span className="inline-block w-2 h-4 ml-1 bg-green-500 animate-pulse align-middle" />
+                    <div className="flex items-start gap-3 msg-animate group">
+                      <ZenoxLogo size={26} />
+                      <div className="flex-1 min-w-0 max-w-[78%] md:max-w-[68%]">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-[11px] font-bold text-emerald-400 tracking-wide">
+                            ZENOX
+                          </span>
+                          <span className="text-[9px] text-[#2a2a2a] font-mono">
+                            {backendModel}
+                          </span>
+                        </div>
+                        <div className="px-4 py-3 rounded-[18px] rounded-tl-[6px]
+                          bg-[#0f0f0f] border border-[rgba(255,255,255,0.06)]
+                          text-[13.5px] text-[#d8d8d8] leading-[1.7] font-[400]
+                          markdown-body">
+                          {renderMarkdown(streamingContent)}
+                          <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse align-middle" />
+                        </div>
                       </div>
                     </div>
                   </div>
-                )}
-
-                {messages.length > 0 && messages[messages.length - 1].role === 'assistant' && !isLoading && (
-                  <button onClick={handleRegenerate}
-                    className="flex items-center gap-1.5 text-xs text-[#555] md:hover:text-white transition-colors mt-2 ml-1 p-2 md:p-0"
-                    aria-label="Regenerate">
-                    <RefreshCw size={12} />
-                    Regenerate
-                  </button>
                 )}
 
                 {suggestions.length > 0 && !isLoading && (
@@ -1330,7 +1490,11 @@ export default function App() {
           
           {showScrollBtn && (
             <button 
-              onClick={() => messagesEndRef.current?.scrollIntoView({behavior:'smooth'})}
+              onClick={() => {
+                isUserScrolling.current = false;
+                setShowScrollBtn(false);
+                messagesEndRef.current?.scrollIntoView({behavior:'smooth'});
+              }}
               className="absolute bottom-4 right-4 z-10 bg-[#1a1a1a] border border-[#2a2a2a] text-white rounded-full p-3 md:p-2 shadow-xl border-t border-[#333] flex items-center gap-1.5 text-[10px] md:text-xs animate-[fadeIn_0.2s_ease]"
               aria-label="Scroll to bottom"
             >
@@ -1340,55 +1504,10 @@ export default function App() {
         </div>
 
         {/* Input Area */}
-        <div className="shrink-0 pt-0 pb-6 px-2 md:px-8 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent sticky bottom-0 z-20">
-          <div className="max-w-3xl mx-auto relative group">
+        <div className="shrink-0 px-4 pb-4 pt-3 bg-[#0b0b0b] 
+          border-t border-[rgba(255,255,255,0.04)] z-20">
+          <div className="max-w-3xl mx-auto relative group flex flex-col justify-end">
             
-            {isListening && (
-              <div className="flex items-center gap-2 text-xs font-semibold text-red-500 mb-2 px-3 animate-pulse bg-red-500/10 w-fit rounded-full py-1.5 border border-red-500/20 backdrop-blur-sm shadow-[0_0_15px_rgba(239,68,68,0.2)]">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
-                Listening... Speak now
-              </div>
-            )}
-            
-            {msgStatus !== 'idle' && !isListening && (
-              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest mb-2 px-3 animate-[fadeIn_0.2s_ease]">
-                {msgStatus === 'sending' && <span className="text-yellow-500 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div> Sending payload...</span>}
-                {msgStatus === 'thinking' && <span className="text-blue-500 flex items-center gap-2 animate-pulse"><div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping"></div> Cortex processing...</span>}
-                {msgStatus === 'streaming' && <span className="text-green-500 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div> Neural output synthesizing...</span>}
-              </div>
-            )}
-            
-            {selectedImage && imagePreview && (
-              <div className="flex items-center gap-3 px-3 py-2 glass-panel rounded-2xl border-white/10 mb-2 mx-1 shadow-lg shadow-black/50">
-                <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border border-white/10" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{selectedImage.name}</p>
-                  <p className="text-[10px] text-[#888] font-mono mt-1">{(selectedImage.size / 1024 / 1024).toFixed(2)} MB</p>
-                </div>
-                <button onClick={() => { setSelectedImage(null); setImagePreview(null); if(imageInputRef.current) imageInputRef.current.value=''; }} className="p-2 text-[#555] hover:text-red-400 hover:bg-white/5 rounded-full transition-all" aria-label="Remove image">
-                  <X size={16} />
-                </button>
-              </div>
-            )}
-
-            {uploadedFile && (
-              <div className="flex items-center gap-3 px-3 py-2 glass-panel rounded-2xl border-white/10 mb-2 mx-1 shadow-lg shadow-black/50">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                  <FileText size={20} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-white font-semibold truncate">{uploadedFile.name}</p>
-                  <p className="text-[10px] text-[#888] font-mono mt-1">
-                    {(uploadedFile.content.length / 1000).toFixed(1)}KB stored
-                  </p>
-                </div>
-                <button onClick={() => setUploadedFile(null)} 
-                  className="text-[#555] hover:text-red-400 p-2 hover:bg-white/5 rounded-full transition-all">
-                  <X size={16} />
-                </button>
-              </div>
-            )}
-
             <AgentProgressPanel
               taskId={currentAgentTaskId}
               steps={agentTaskSteps}
@@ -1396,10 +1515,10 @@ export default function App() {
             />
 
             {lastProject && agentMode && (
-              <div className="mx-4 mb-4 p-4 bg-[#0d1a0d] border border-green-500/30 rounded-2xl">
+              <div className="mx-4 mb-4 p-4 bg-[#0d1a0d] border border-emerald-500/30 rounded-2xl">
                 <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle2 size={14} className="text-green-400" />
-                  <span className="text-xs font-bold text-green-400 uppercase tracking-wider">
+                  <CheckCircle2 size={14} className="text-emerald-400" />
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
                     Project Complete
                   </span>
                 </div>
@@ -1416,8 +1535,8 @@ export default function App() {
                   {lastProject.deploy_url && lastProject.deploy_url.startsWith('http') && (
                     <a href={lastProject.deploy_url} target="_blank" rel="noreferrer"
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 
-                        bg-green-900/40 border border-green-700/50 text-green-300 
-                        hover:bg-green-900/60 rounded-lg transition-all font-semibold">
+                        bg-emerald-900/40 border border-emerald-700/50 text-emerald-300 
+                        hover:bg-emerald-900/60 rounded-lg transition-all font-semibold">
                       🚀 View Live Site
                     </a>
                   )}
@@ -1425,43 +1544,87 @@ export default function App() {
               </div>
             )}
 
-            <div className={`glass-panel rounded-3xl p-2 transition-all duration-300 flex items-end relative overflow-visible ${
-              isLoading ? 'border-white/5 opacity-80' : 
-              agentMode ? 'border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.15)] bg-purple-500/5 focus-within:shadow-[0_0_40px_rgba(168,85,247,0.25)]' :
-              'border-white/10 focus-within:border-green-400/50 focus-within:shadow-[0_0_25px_rgba(34,197,94,0.15)] shadow-2xl shadow-black/50 hover:border-white/20'
-            }`}>
-              <div className="relative shrink-0 flex items-end mb-1 mx-0.5">
-                <button
-                  onClick={() => setShowInputOptions(!showInputOptions)}
-                  className={`p-2 transition-all rounded-xl min-w-[40px] min-h-[40px] flex items-center justify-center z-30 relative ${showInputOptions ? 'bg-white/10 text-white' : 'text-[#666] hover:text-white hover:bg-white/5'}`}
-                  aria-label="More options"
-                >
-                  <Plus size={20} className={`transition-transform duration-300 ${showInputOptions ? 'rotate-45' : 'rotate-0'}`} />
-                </button>
-                
-                {/* Popover Menu */}
-                {showInputOptions && (
-                  <>
-                    <div className="fixed inset-0 z-20" onClick={() => setShowInputOptions(false)}></div>
-                    <div className="absolute bottom-full left-0 mb-3 bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex flex-col gap-1 shadow-[0_10px_40px_rgba(0,0,0,0.5)] origin-bottom-left animate-[fadeIn_0.2s_ease] z-30 min-w-[180px]">
-                    <button onClick={() => { fileInputRef.current?.click(); setShowInputOptions(false); }} className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-[#aaa] hover:text-white hover:bg-white/5 rounded-xl transition-all">
-                      <FileText size={16} className="text-blue-400" /> Upload File
-                    </button>
-                    <button onClick={() => { imageInputRef.current?.click(); setShowInputOptions(false); }} className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-[#aaa] hover:text-white hover:bg-white/5 rounded-xl transition-all">
-                      <ImageIcon size={16} className="text-emerald-400" /> Upload Image
-                    </button>
-                    <button onClick={() => { toggleVoiceInput(); setShowInputOptions(false); }} className={`flex items-center gap-3 px-3 py-2.5 text-sm font-semibold hover:bg-white/5 rounded-xl transition-all ${isListening ? 'text-red-400 bg-red-400/10' : 'text-[#aaa] hover:text-white'}`}>
-                      {isListening ? <MicOff size={16} className="animate-pulse" /> : <Mic size={16} className="text-red-400" />} 
-                      {isListening ? "Stop Voice" : "Voice Input"}
-                    </button>
-                    <div className="h-px bg-white/10 my-1 mx-2" />
-                    <button onClick={() => { setAgentMode(!agentMode); setShowInputOptions(false); }} className={`flex items-center gap-3 px-3 py-2.5 text-sm font-semibold rounded-xl transition-all ${agentMode ? 'text-purple-400 bg-purple-500/10 border border-purple-500/20' : 'text-[#aaa] hover:text-white hover:bg-white/5 border border-transparent'}`}>
-                      <Terminal size={16} className={agentMode ? 'animate-pulse text-purple-400' : 'text-purple-400'} /> 
-                      Agent Mode {agentMode && 'ON'}
+            {/* Image/file preview chips */}
+            {(imagePreview || uploadedFile) && (
+              <div className="flex items-center gap-2 mb-2 px-1">
+                {imagePreview && (
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-[10px]
+                    bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)]">
+                    <img src={imagePreview} className="w-6 h-6 object-cover rounded-md"/>
+                    <span className="text-[11px] text-[#666]">Image</span>
+                    <button onClick={() => { setSelectedImage(null); setImagePreview(null); if(imageInputRef.current) imageInputRef.current.value=''; }} className="text-[#333] hover:text-red-400 ml-1">
+                      <X size={10}/>
                     </button>
                   </div>
-                  </>
                 )}
+                {uploadedFile && (
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-[10px]
+                    bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)]">
+                    <FileText size={12} className="text-blue-400"/>
+                    <span className="text-[11px] text-[#666] max-w-[100px] truncate">
+                      {uploadedFile.name}
+                    </span>
+                    <button onClick={() => setUploadedFile(null)} 
+                      className="text-[#333] hover:text-red-400 ml-1">
+                      <X size={10}/>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Status row */}
+            {msgStatus !== 'idle' && (
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                  msgStatus === 'sending' ? 'bg-yellow-400 animate-pulse' :
+                  msgStatus === 'thinking' ? 'bg-blue-400 animate-ping' :
+                  'bg-emerald-400 animate-pulse'
+                }`} />
+                <span className="text-[10px] text-[#444]">
+                  {msgStatus === 'sending' ? 'Sending...' :
+                   msgStatus === 'thinking' ? 'Zenox is thinking...' :
+                   'Zenox is writing...'}
+                </span>
+              </div>
+            )}
+            
+            {/* Main input box */}
+            <div className={`flex items-end gap-2 px-3 py-3 rounded-[16px]
+              bg-[#111] border transition-all duration-200 ${
+              inputValue.length > 0 
+                ? 'border-emerald-500/25 shadow-[0_0_0_3px_rgba(16,185,129,0.06)]' 
+                : 'border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.12)]'
+            }`}>
+              
+              {/* Left tools */}
+              <div className="flex items-center gap-0.5 self-end pb-0.5">
+                <button onClick={() => imageInputRef.current?.click()}
+                  className="p-1.5 rounded-lg text-[#2a2a2a] hover:text-[#888] 
+                    hover:bg-[rgba(255,255,255,0.05)] transition-all">
+                  <ImageIcon size={15}/>
+                </button>
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="p-1.5 rounded-lg text-[#2a2a2a] hover:text-[#888] 
+                    hover:bg-[rgba(255,255,255,0.05)] transition-all">
+                  <FileText size={15}/>
+                </button>
+                <button onClick={toggleVoiceInput}
+                  className={`p-1.5 rounded-lg transition-all ${
+                  isListening 
+                    ? 'text-red-400 bg-red-500/10 animate-pulse' 
+                    : 'text-[#2a2a2a] hover:text-[#888] hover:bg-[rgba(255,255,255,0.05)]'
+                }`}>
+                  {isListening ? <MicOff size={15}/> : <Mic size={15}/>}
+                </button>
+                <button onClick={() => setAgentMode(!agentMode)}
+                  className={`p-1.5 rounded-lg transition-all ml-1 border ${
+                  agentMode 
+                    ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' 
+                    : 'text-[#2a2a2a] border-transparent hover:text-[#888] hover:bg-[rgba(255,255,255,0.05)]'
+                }`}>
+                  <Terminal size={15} className={agentMode ? "animate-pulse" : ""}/>
+                </button>
               </div>
 
               <input type="file" ref={fileInputRef} className="hidden"
@@ -1469,13 +1632,11 @@ export default function App() {
                 onChange={handleFileSelect} />
               <input type="file" ref={imageInputRef} className="hidden" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageSelect} />
               
+              {/* Textarea */}
               <textarea
                 ref={inputRef}
                 value={inputValue}
-                onChange={(e) => {
-                  setInputValue(e.target.value);
-                  if (e.target.value.length === 0) setSuggestions([]);
-                }}
+                onChange={e => { setInputValue(e.target.value); setSuggestions([]); }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -1497,16 +1658,23 @@ export default function App() {
                       ? "Agent ready... describe the task" 
                       : "Message Zenox..."
                 }
-                disabled={!agentMode && isLoading}
                 rows={1}
-                className="flex-1 max-h-[200px] min-h-[44px] bg-transparent resize-none outline-none py-3 px-2 text-base md:text-sm text-[#f0f0f0] placeholder:text-[#555555] disabled:opacity-50"
-                style={{ height: inputValue.split('\n').length > 1 ? `${Math.min(inputValue.split('\n').length * 24 + 28, 200)}px` : '44px' }}
+                disabled={!agentMode && isLoading}
+                style={{ resize: 'none', maxHeight: '120px' }}
+                className="flex-1 bg-transparent text-[13.5px] text-[#e0e0e0] 
+                  placeholder:text-[#2d2d2d] outline-none leading-[1.5] 
+                  disabled:opacity-40 min-h-[22px] py-0.5"
+                onInput={e => {
+                  const t = e.target as HTMLTextAreaElement;
+                  t.style.height = 'auto';
+                  t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+                }}
               />
               
-              <div className="flex-shrink-0 self-end mb-1 mr-1 ml-1">
-                {(agentMode && (msgStatus === 'thinking' || msgStatus === 'streaming')) ? (
-                  <button 
-                    onClick={() => {
+              {/* Send/Stop button */}
+              <div className="self-end pb-0.5">
+                {isLoading ? (
+                  <button onClick={() => {
                       const agent = (window as any).awaisAgent;
                       if (agent && currentAgentTaskId && inputValue.trim()) {
                         agent.pivotTask(currentAgentTaskId, inputValue.trim());
@@ -1515,46 +1683,34 @@ export default function App() {
                         stopGeneration();
                       }
                     }}
-                    className={`p-3 md:p-2 rounded-xl transition-transform active:scale-95 flex items-center justify-center ${
-                      inputValue.trim() 
-                        ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.5)] hover:bg-purple-500' 
-                        : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                    }`}
-                    title={inputValue.trim() ? "Pivot Task" : "Stop Generation"}
-                  >
-                    {inputValue.trim() ? <Send size={18} /> : <Square size={18} fill="currentColor" />}
-                  </button>
-                ) : isLoading ? (
-                  <button onClick={stopGeneration} className="p-3 md:p-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all" aria-label="Stop generation">
-                    <Square size={18} fill="currentColor" />
+                    className="w-8 h-8 flex items-center justify-center rounded-[10px]
+                      bg-red-500/15 border border-red-500/25 text-red-400 
+                      hover:bg-red-500/25 transition-all active:scale-95">
+                    {inputValue.trim() && agentMode ? <Send size={13} fill="currentColor"/> : <Square size={13} fill="currentColor"/>}
                   </button>
                 ) : (
-                  <button
-                    onClick={handleSend}
-                    disabled={(!inputValue.trim() && !selectedImage && !uploadedFile) || inputValue.length > 4000}
-                    className={`p-3 md:p-2 rounded-xl transition-transform active:scale-95 flex items-center justify-center ${
-                      (!inputValue.trim() && !selectedImage && !uploadedFile) || inputValue.length > 4000
-                        ? 'bg-transparent text-[#555] cursor-not-allowed'
-                        : 'bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] hover:bg-green-400'
-                    }`}
-                    title={inputValue.length > 4000 ? "Message too long (max 4000 chars)" : "Send message"}
-                    aria-label="Send message"
-                  >
-                    <Send size={18} />
+                  <button onClick={() => handleSendWithMessage(inputValue)}
+                    disabled={(!inputValue.trim() && !selectedImage && !uploadedFile) || backendStatus === 'offline'}
+                    className={`w-8 h-8 flex items-center justify-center rounded-[10px]
+                      transition-all duration-200 active:scale-95 ${
+                      (inputValue.trim() || selectedImage || uploadedFile) && backendStatus !== 'offline'
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_2px_8px_rgba(16,185,129,0.3)]'
+                        : 'bg-[rgba(255,255,255,0.04)] text-[#2a2a2a] cursor-not-allowed'
+                    }`}>
+                    <ArrowUp size={15} strokeWidth={2.5}/>
                   </button>
                 )}
               </div>
             </div>
             
-            <div className="hidden md:flex justify-between items-center mt-2 px-1">
-              <div className="text-[11px] text-[#555555] font-medium tracking-wide">
-                Press Enter to send &middot; Shift+Enter for newline
-              </div>
+            {/* Bottom hint */}
+            <div className="flex items-center justify-between mt-2 px-1">
+              <span className="text-[9px] text-[#222]">
+                Enter to send · Shift+Enter for newline
+              </span>
               {inputValue.length > 0 && (
-                <span className={`text-[10px] font-mono ${
-                  inputValue.length > 3000 ? 'text-red-400' :
-                  inputValue.length > 1500 ? 'text-yellow-400' :
-                  'text-[#333]'
+                <span className={`text-[9px] font-mono ${
+                  inputValue.length > 3000 ? 'text-red-400' : 'text-[#222]'
                 }`}>
                   {inputValue.length.toLocaleString()}
                 </span>
@@ -1720,6 +1876,24 @@ export default function App() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                <div className="mt-8 mb-6">
+                  <span className="text-xs text-[#888] font-medium block mb-3">API Keys Status</span>
+                  <div className="glass-panel p-4 rounded-xl border border-white/5 space-y-2">
+                    {apiKeysStatus === null ? (
+                      <div className="text-xs text-[#666] animate-pulse">Checking status...</div>
+                    ) : (
+                      Object.entries(apiKeysStatus).map(([keyName, statusStr]) => (
+                        <div key={keyName} className="flex justify-between items-center text-xs">
+                          <span className="font-mono text-[#888]">{keyName}</span>
+                          <span className={`font-medium ${String(statusStr).includes('✅') ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {String(statusStr)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-8 mb-6">
