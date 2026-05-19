@@ -56,6 +56,24 @@ async def health():
         "product": "Zenox"
     }
 
+@app.get("/api/health/keys")
+async def health_keys(_=Depends(verify_api_key)):
+    keys = {
+        "SYNOD_API_KEY": os.getenv("SYNOD_API_KEY"),
+        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY"),
+        "E2B_API_KEY": os.getenv("E2B_API_KEY"),
+        "GITHUB_TOKEN": os.getenv("GITHUB_TOKEN"),
+        "GITHUB_USERNAME": os.getenv("GITHUB_USERNAME"),
+    }
+    status = {}
+    for key, value in keys.items():
+        if value:
+            status[key] = "Connected ✅"
+        else:
+            status[key] = "Missing ❌"
+            
+    return status
+
 def verify_api_key(x_api_key: str = Header(None)):
     expected = os.getenv("SYNOD_API_KEY", "local-dev-key")
     if expected:
