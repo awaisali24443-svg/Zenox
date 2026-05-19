@@ -1069,7 +1069,7 @@ export default function App() {
                     <div key={p.id} className="px-3 py-2 rounded-xl hover:bg-[#111] 
                       transition-colors cursor-default">
                       <p className="text-xs text-[#888] truncate font-medium">
-                        {p.prompt.slice(0, 35)}
+                        {(p.prompt || 'Untitled Project').slice(0, 35)}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         {p.deploy_url && p.deploy_url.startsWith('http') && (
