@@ -12,3 +12,6 @@ metadata.json
 server.ts
 *.test.py
 firebase-applet-config.json
+firebase-blueprint.json
+*.json.bak
+service-account*.json

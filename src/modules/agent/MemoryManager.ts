@@ -30,6 +30,7 @@ export class MemoryManager {
    * Fetches the long-term context of a user
    */
   public async getUserContext(userId: string): Promise<UserContext | null> {
+    if (!import.meta.env.VITE_FIREBASE_API_KEY) return null;
     try {
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
@@ -48,6 +49,7 @@ export class MemoryManager {
    * Updates or creates the user's long-term context
    */
   public async saveUserContext(userId: string, data: Partial<UserContext>): Promise<void> {
+    if (!import.meta.env.VITE_FIREBASE_API_KEY) return;
     try {
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
@@ -66,6 +68,7 @@ export class MemoryManager {
    * Adds an item to the short-term working memory (recent events/past tasks)
    */
   public async addMemoryEntry(userId: string, content: string): Promise<void> {
+    if (!import.meta.env.VITE_FIREBASE_API_KEY) return;
     try {
       const memoryRef = collection(db, 'users', userId, 'memories');
       await addDoc(memoryRef, {
@@ -82,6 +85,7 @@ export class MemoryManager {
    * Retrieves the latest memory context
    */
   public async getRecentMemories(userId: string, count: number = 5): Promise<MemoryEntry[]> {
+    if (!import.meta.env.VITE_FIREBASE_API_KEY) return [];
     try {
       const memoryRef = collection(db, 'users', userId, 'memories');
       const q = query(memoryRef, orderBy('timestamp', 'desc'), limit(count));

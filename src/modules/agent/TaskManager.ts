@@ -45,11 +45,14 @@ export class TaskManager {
     };
 
     try {
-      const taskRef = doc(db, 'tasks', taskId);
-      await setDoc(taskRef, taskRecord);
-      
       this.taskMap.set(taskId, taskRecord);
       this.queue.push(taskId);
+      
+      if (!!import.meta.env.VITE_FIREBASE_API_KEY) {
+        const taskRef = doc(db, 'tasks', taskId);
+        await setDoc(taskRef, taskRecord);
+      }
+      
       console.log(`[TaskManager] Enqueued task: ${taskId}`);
       
       return taskId;
@@ -76,6 +79,13 @@ export class TaskManager {
    * Updates a task's status in Firestore
    */
   public async updateTaskState(taskId: string, status: TaskStatus, additionalData: Partial<TaskRecord> = {}): Promise<void> {
+    const task = this.taskMap.get(taskId);
+    if (task) {
+      this.taskMap.set(taskId, { ...task, status, updatedAt: Date.now(), ...additionalData });
+    }
+    
+    if (!import.meta.env.VITE_FIREBASE_API_KEY) return;
+    
     try {
       const taskRef = doc(db, 'tasks', taskId);
       await updateDoc(taskRef, {
@@ -87,6 +97,10 @@ export class TaskManager {
     } catch (e) {
       console.error(`[TaskManager] Failed to update state for task ${taskId}:`, e);
     }
+  }
+  
+  public getTask(taskId: string): TaskRecord | undefined {
+    return this.taskMap.get(taskId);
   }
 
   public getQueueLength(): number {

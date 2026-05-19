@@ -1,8 +1,17 @@
+export interface FileToCommit {
+  name: string;
+  content: string;
+}
+
 export class GithubManager {
   private static instance: GithubManager;
-  private readonly defaultBranch = 'main';
+  private apiUrl: string;
+  private apiKey: string;
 
-  private constructor() {}
+  private constructor() {
+    this.apiUrl = import.meta.env.VITE_API_URL || '';
+    this.apiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+  }
 
   public static getInstance(): GithubManager {
     if (!GithubManager.instance) {
@@ -11,19 +20,39 @@ export class GithubManager {
     return GithubManager.instance;
   }
 
-  /**
-   * Initializes or authenticates github repository operations.
-   * Handles zero-budget / client simplicity by using a shared vault or proxy.
-   */
-  public async initializeRepository(repoName: string): Promise<boolean> {
-    console.log(`[GithubManager] Initializing repository: ${repoName} for the client without exposing keys.`);
-    // TODO: Implement central OAuth / Proxied GitHub API call
-    return true;
+  public async createRepo(repoName: string, description?: string): Promise<{success:boolean; url:string}> {
+    const res = await fetch(`${this.apiUrl}/api/agent/github/create-repo`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': this.apiKey
+      },
+      body: JSON.stringify({ repo_name: repoName, description })
+    });
+    const data = await res.json();
+    return { success: data.success, url: data.url || '' };
   }
 
-  public async commitAndPush(repoName: string, files: any[], message: string): Promise<boolean> {
-    console.log(`[GithubManager] Committing to ${repoName}: ${message}`);
-    // TODO: Implement commit logic
-    return true;
+  public async commitAndPush(
+    repoName: string,
+    files: FileToCommit[],
+    message: string,
+    taskId?: string
+  ): Promise<boolean> {
+    const res = await fetch(`${this.apiUrl}/api/agent/github/commit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': this.apiKey
+      },
+      body: JSON.stringify({
+        repo_name: repoName,
+        files,
+        message,
+        task_id: taskId
+      })
+    });
+    const data = await res.json();
+    return data.success === true;
   }
 }

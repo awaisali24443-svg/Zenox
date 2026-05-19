@@ -32,23 +32,37 @@ export class IdleBrain {
   }
 
   private async analyzeIdle(userId: string) {
-    console.log("[IdleBrain] Scanning past tasks and context...");
-    // Mocking an insight generation for demonstration of the Proactive Reverse Prompting Strategy (#3)
-    const recent = await this.memory.getRecentMemories(userId);
+    const recent = await this.memory.getRecentMemories(userId, 5);
+    if (recent.length === 0) return;
     
-    // In a real system, we'd send memory to LLM and ask "Does the user need something proactively based on this?"
-    // For this demo, if they have memories, we generate a proactive mock prompt if random check passes.
+    // 25% chance to trigger — don't annoy user
+    if (Math.random() > 0.25) return;
     
-    // 30% chance to trigger proactively during idle hook to not annoy user
-    if (Math.random() > 0.3) return;
-
-    const proactiveMessages = [
-      "I noticed you've been working on UI components recently. I took the liberty of searching for the latest modular design trends. Should I draft a summary?",
-      "It looks like you usually review deployment logs around this time. Should I run a diagnostic on your latest GitHub commits?",
-      "I've been analyzing your recent memory context in the background. There's a chance you'll need the deployment script run next. Want me to trigger it?"
-    ];
-
-    const message = proactiveMessages[Math.floor(Math.random() * proactiveMessages.length)];
-    this.onProactiveMessage(message);
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    const apiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+    
+    const memoryText = recent
+      .map(m => m.content)
+      .join('\n');
+    
+    try {
+      const res = await fetch(`${apiUrl}/api/agent/proactive`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey
+        },
+        body: JSON.stringify({ memories: memoryText })
+      });
+      
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      if (data.suggestion && data.suggestion.length > 10) {
+        this.onProactiveMessage(data.suggestion);
+      }
+    } catch {
+      // Silently fail — proactive messages are not critical
+    }
   }
 }

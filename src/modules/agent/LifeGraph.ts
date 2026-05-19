@@ -38,6 +38,7 @@ export class LifeGraph {
    * Retrieves the semantic life graph for a user.
    */
   public async getGraph(userId: string): Promise<SemanticGraph> {
+    if (!import.meta.env.VITE_FIREBASE_API_KEY) return { nodes: {}, edges: [] };
     try {
       const graphRef = doc(db, 'life_graphs', userId);
       const graphDoc = await getDoc(graphRef);
@@ -92,8 +93,12 @@ export class LifeGraph {
         updatedGraph.edges.push(...parsedExtraction.edges);
       }
 
-      await setDoc(doc(db, 'life_graphs', userId), updatedGraph);
-      console.log(`[LifeGraph] Semantic graph updated successfully for ${userId}`);
+      if (!!import.meta.env.VITE_FIREBASE_API_KEY) {
+        await setDoc(doc(db, 'life_graphs', userId), updatedGraph);
+        console.log(`[LifeGraph] Semantic graph updated successfully for ${userId}`);
+      } else {
+        console.log(`[LifeGraph] Firebase not initialized, skipping semantic graph update for ${userId}`);
+      }
 
     } catch (e) {
       console.error("[LifeGraph] Extraction failure:", e);

@@ -76,57 +76,123 @@ export class AgentCore {
     try {
       await this.taskManager.updateTaskState(task.id, 'processing');
       
-      console.log('[AgentCore] Starting processing task:', task.id);
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const apiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey
+      };
       
-      // Load Memory Context
+      // Load memory context
       const recentMemories = await this.memory.getRecentMemories(task.userId);
-      const memoryContextString = recentMemories.map(m => m.content).join('\n');
+      const memoryContext = recentMemories.map(m => m.content).join('\n');
       
-      // Load Semantic Graph
-      const graph = await this.lifeGraph.getGraph(task.userId);
-      const graphEdges = graph.edges.map(e => `${e.sourceId} -> ${e.relation} -> ${e.targetId}`).join(', ');
-
-      // 0. LLM Phase (Generate Code)
-      const promptContext = `Context from past memory:\n${memoryContextString}\n\nRelationships:\n${graphEdges}\n\nTask: ${task.prompt}`;
-      const generatedCode = await this.llm.generateCode(
-         `Write a JavaScript function that implements the following feature completely. Include console.log at the end to demonstrate output.\n${promptContext}`,
-         'javascript'
-      );
-      console.log('[AgentCore] LLM generated code length:', generatedCode.length);
-
-      // 1. Sandbox Phase (Test / Gen Code)
-      const codeResult = await this.sandbox.executeCode(generatedCode, 'javascript');
-      console.log('[AgentCore] Sandbox execution completed:', codeResult);
-
-      // Extract new semantic relationship in background
-      this.lifeGraph.extractAndStoreFact(task.userId, task.prompt).catch(console.error);
-
-      // 2. Github Phase (Commit / Version Control)
-      const committed = await this.github.commitAndPush('user-project-repo', [{ name: 'feature.js', content: generatedCode }], 'Auto-update by Zenox Agent');
-      if (committed) {
-        console.log('[AgentCore] Code successfully pushed to version control.');
-      }
-
-      // 3. Render Phase (Deployment)
-      const deployUrl = await this.render.deployProject('proj_xyz', 'https://github.com/auto/user-project-repo');
-      console.log('[AgentCore] Project successfully deployed to:', deployUrl);
-
-      // Add to Short-Term Memory
-      await this.memory.addMemoryEntry(task.userId, `Executed prompt: ${task.prompt} | Result: ${codeResult}`);
-
-      // Finalize Task State
-      await this.taskManager.updateTaskState(task.id, 'completed', {
-        result: {
-          deployUrl,
-          executionResult: codeResult,
-          generatedCode
-        }
+      // STEP 1: Classify the task
+      const classRes = await fetch(`${apiUrl}/api/agent/classify`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ prompt: task.prompt })
       });
-      console.log(`[AgentCore] Task ${task.id} completed successfully.`);
+      const classification = await classRes.json();
+      const language = classification.language || 'javascript';
+      const taskType = classification.type || 'general';
+      
+      // STEP 2: Setup project repo (using YOUR GitHub account)
+      const setupRes = await fetch(`${apiUrl}/api/agent/github/setup-project`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          prompt: task.prompt,
+          user_id: task.userId,
+          task_id: task.id
+        })
+      });
+      const setup = await setupRes.json();
+      
+      if (!setup.success) {
+        // No GitHub token configured — still generate code, just skip GitHub
+        console.warn('[AgentCore] GitHub not configured — code-only mode');
+      }
+      
+      const repoName = setup.repo_name || `zenox-project-${task.id.slice(0,8)}`;
+      
+      // STEP 3: Generate code
+      const generateRes = await fetch(`${apiUrl}/api/agent/generate`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          prompt: `${task.prompt}\n\nContext from past sessions:\n${memoryContext}`,
+          language,
+          task_type: taskType,
+          task_id: task.id
+        })
+      });
+      const generated = await generateRes.json();
+      const generatedCode = generated.code || '';
+      
+      // STEP 4: Execute/test the code
+      const executeRes = await fetch(`${apiUrl}/api/agent/execute`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          code: generatedCode,
+          language,
+          task_id: task.id
+        })
+      });
+      const executed = await executeRes.json();
+      
+      // STEP 5: Commit to GitHub (if configured)
+      let repoUrl = setup.repo_url || '';
+      if (setup.success && repoName) {
+        const commitRes = await fetch(`${apiUrl}/api/agent/github/commit`, {
+          method: 'POST', headers,
+          body: JSON.stringify({
+            repo_name: repoName,
+            files: [{ name: `main.${language === 'html' ? 'html' : language === 'python' ? 'py' : 'js'}`, content: generatedCode }],
+            message: `Zenox: ${task.prompt.slice(0, 50)}`,
+            task_id: task.id
+          })
+        });
+      }
+      
+      // STEP 6: Deploy (if Render hook configured)
+      const deployRes = await fetch(`${apiUrl}/api/agent/render/deploy`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          project_name: repoName,
+          repo_url: repoUrl,
+          task_id: task.id
+        })
+      });
+      const deployed = await deployRes.json();
+      const deployUrl = deployed.success ? deployed.url : '';
+      
+      // STEP 7: Save project record
+      await fetch(`${apiUrl}/api/projects/save`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          user_id: task.userId,
+          prompt: task.prompt,
+          repo_name: repoName,
+          repo_url: repoUrl,
+          deploy_url: deployUrl,
+          code: generatedCode,
+          language
+        })
+      });
+      
+      // Save to memory
+      await this.memory.addMemoryEntry(
+        task.userId,
+        `Built: "${task.prompt}" → ${deployUrl || 'code generated'}`
+      );
+      
+      await this.taskManager.updateTaskState(task.id, 'completed', {
+        result: { deployUrl, repoUrl, generatedCode, executionResult: executed.result }
+      });
 
     } catch (error: any) {
-      console.error(`[AgentCore] Error processing task ${task.id}:`, error);
-      await this.taskManager.updateTaskState(task.id, 'failed', { error: error?.message || 'Unknown error' });
+      console.error('[AgentCore] Error:', error);
+      await this.taskManager.updateTaskState(task.id, 'failed', {
+        error: error?.message || 'Unknown error'
+      });
     }
   }
 }

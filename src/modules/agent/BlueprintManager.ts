@@ -25,16 +25,25 @@ export class BlueprintManager {
     console.log(`[BlueprintManager] Compiling blueprint for ${userId}`);
     
     // 1. Fetch User details (custom instructions/preferences)
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    const userData = userDoc.exists() ? userDoc.data() : { preferences: {} };
+    let userData: any = { preferences: {} };
+    if (!!import.meta.env.VITE_FIREBASE_API_KEY) {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) userData = userDoc.data();
+    }
 
     // 2. Fetch User's exported skills
-    const skillsSnapshot = await getDocs(collection(db, 'skills'));
-    const skills = skillsSnapshot.docs.map(d => d.data());
+    let skills: any[] = [];
+    if (!!import.meta.env.VITE_FIREBASE_API_KEY) {
+      const skillsSnapshot = await getDocs(collection(db, 'skills'));
+      skills = skillsSnapshot.docs.map(d => d.data());
+    }
 
     // 3. Fetch Semantic Graph
-    const graphDoc = await getDoc(doc(db, 'life_graphs', userId));
-    const graph = graphDoc.exists() ? graphDoc.data() : { nodes: {}, edges: [] };
+    let graph: any = { nodes: {}, edges: [] };
+    if (!!import.meta.env.VITE_FIREBASE_API_KEY) {
+      const graphDoc = await getDoc(doc(db, 'life_graphs', userId));
+      if (graphDoc.exists()) graph = graphDoc.data();
+    }
 
     // 4. Combine into serialized config
     const blueprint: ZenoxBlueprint = {

@@ -64,10 +64,104 @@ const ZenoxLogo = ({ size = 32, className = "" }: { size?: number, className?: s
   </svg>
 );
 
+const AgentProgressPanel = ({ 
+  taskId, 
+  steps,
+  isActive 
+}: { 
+  taskId: string | null; 
+  steps: string[];
+  isActive: boolean;
+}) => {
+  const [progress, setProgress] = useState<any[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const apiUrl = import.meta.env.VITE_API_URL || '';
+  const apiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+  
+  useEffect(() => {
+    if (!taskId || !isActive) return;
+    
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/agent/progress/${taskId}`, {
+          headers: { 'X-API-Key': apiKey }
+        });
+        const data = await res.json();
+        if (data.progress?.length) {
+          setProgress(data.progress);
+          const doneCount = data.progress.filter((p:any) => p.status === 'done').length;
+          setCurrentStep(doneCount);
+        }
+      } catch {}
+    }, 1500);
+    
+    return () => clearInterval(interval);
+  }, [taskId, isActive]);
+  
+  if (!isActive && progress.length === 0) return null;
+  
+  return (
+    <div className="mx-4 mb-4 p-4 bg-[#0d0d0d] border border-purple-500/20 
+      rounded-2xl">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+        <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">
+          Agent Working
+        </span>
+      </div>
+      <div className="space-y-2">
+        {steps.map((step, i) => {
+          const progressItem = progress[i];
+          const isDone = progressItem?.status === 'done';
+          const isRunning = progressItem?.status === 'running' || i === currentStep;
+          const isFailed = progressItem?.status === 'error';
+          
+          return (
+            <div key={i} className="flex items-start gap-3">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center 
+                shrink-0 mt-0.5 text-[10px] font-bold transition-all ${
+                isDone ? 'bg-green-500 text-black' :
+                isFailed ? 'bg-red-500 text-white' :
+                isRunning ? 'bg-purple-500 text-white animate-pulse' :
+                'bg-[#1a1a1a] text-[#444] border border-[#2a2a2a]'
+              }`}>
+                {isDone ? '✓' : isFailed ? '✗' : isRunning ? '→' : i + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm transition-colors ${
+                  isDone ? 'text-[#666] line-through' :
+                  isRunning ? 'text-white font-medium' :
+                  'text-[#444]'
+                }`}>
+                  {step}
+                </p>
+                {progressItem?.detail && (
+                  <p className="text-[10px] text-[#555] mt-0.5 truncate font-mono">
+                    {progressItem.detail}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
+  useEffect(() => {
+    if (!localStorage.getItem('zenox-user-id')) {
+      const id = 'user-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+      localStorage.setItem('zenox-user-id', id);
+    }
+  }, []);
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [agentTaskSteps, setAgentTaskSteps] = useState<string[]>([]);
+  const [currentAgentTaskId, setCurrentAgentTaskId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [msgStatus, setMsgStatus] = useState<MsgStatus>('idle');
@@ -91,6 +185,75 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState<{msg: string; type: 'success' | 'error' | 'info'} | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [lastProject, setLastProject] = useState<any>(null);
+  
+  const [userProjects, setUserProjects] = useState<any[]>([]);
+  const [showProjects, setShowProjects] = useState(false);
+
+  const fetchUserProjects = async () => {
+    const API_URL = import.meta.env.VITE_API_URL || '';
+    const API_KEY = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+    const userId = localStorage.getItem('zenox-user-id') || 'local-user';
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${userId}`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUserProjects(data.projects || []);
+      }
+    } catch {}
+  };
+  
+  useEffect(() => { fetchUserProjects(); }, []);
+
+  const pollTaskCompletion = async (taskId: string, newMessages: Message[], activeId: string) => {
+    const API_URL = import.meta.env.VITE_API_URL || '';
+    const API_KEY = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+    const maxAttempts = 60; // 5 minutes max
+    let attempts = 0;
+    
+    // Fallback: poll TaskManager memory temporarily because projects are only saved at the END
+    const poll = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(poll);
+        setIsLoading(false);
+        setMsgStatus('idle');
+        return;
+      }
+      
+      try {
+        const res = await fetch(
+          `${API_URL}/api/projects/result/${taskId}`,
+          { headers: { 'X-API-Key': API_KEY } }
+        );
+        if (res.ok) {
+          const project = await res.json();
+          setLastProject(project);
+          clearInterval(poll);
+          
+          // Add completion message to chat
+          const completionMsg: Message = {
+            role: 'assistant',
+            content: `✅ Done! Here's what I built:\n\n**Project:** ${project.prompt}\n${project.repo_url ? `**GitHub:** ${project.repo_url}\n` : ''}${project.deploy_url ? `**Live at:** ${project.deploy_url}` : '**Code generated** — GitHub/Render not configured yet'}`,
+            timestamp: Date.now() / 1000
+          };
+          const finalMessages = [...newMessages, completionMsg];
+          setMessages(finalMessages);
+          setStreamingContent('');
+          saveCurrentConversation(finalMessages, activeId);
+          setIsLoading(false);
+          setMsgStatus('idle');
+          setCurrentAgentTaskId(null);
+        } else {
+            // Still polling, you could optionally fetch Task status, but UI updates via AgentProgressPanel now
+            // Just update the stream mildly
+            setStreamingContent(`> Task ID: ${taskId}\n> Synthesizing code...`);
+        }
+      } catch {}
+    }, 5000); // poll every 5 seconds
+  };
 
   useEffect(() => {
     if (theme === 'light') {
@@ -120,7 +283,6 @@ export default function App() {
   const recognitionRef = useRef<any>(null);
   
   const [agentMode, setAgentMode] = useState(true);
-  const [currentAgentTaskId, setCurrentAgentTaskId] = useState<string | null>(null);
   const [showInputOptions, setShowInputOptions] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -433,60 +595,30 @@ export default function App() {
         setStreamingContent("> Initializing Zenox Subroutines...\n");
         const agent = (window as any).awaisAgent;
         if (!agent) throw new Error("AgentCore not initialized");
-        const taskId = await agent.submitTask('ai-tester', userMsg.content);
+        
+        try {
+          const classRes = await fetch(`${API_URL}/api/agent/classify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+            body: JSON.stringify({ prompt: userMsg.content })
+          });
+          const classification = await classRes.json();
+          setAgentTaskSteps(classification.steps || []);
+        } catch (err) {
+          console.error("Classification failed:", err);
+          setAgentTaskSteps([
+            "Analyzing your request",
+            "Generating solution",
+            "Testing",
+            "Saving result"
+          ]);
+        }
+        
+        const userId = localStorage.getItem('zenox-user-id') || 'local-user';
+        const taskId = await agent.submitTask(userId, userMsg.content);
         setCurrentAgentTaskId(taskId);
         
-        import('firebase/firestore').then(({ doc, onSnapshot }) => {
-          import('./modules/db/firebase').then(({ db }) => {
-            const unsub = onSnapshot(doc(db, 'tasks', taskId), (snapshot) => {
-              const data = snapshot.data();
-              if (data) {
-                let updatedStream = `> Task ID: ${taskId}\n> Status: ${data.status.toUpperCase()}\n`;
-                if (data.prompt) {
-                  updatedStream += `> Pivot focus: ${data.prompt}\n`;
-                }
-                if (data.status === 'completed') {
-                   updatedStream += `\n**Task Completed!**\n\n**Deployment URL:** ${data.result?.deployUrl || 'N/A'}\n\n**Execution Result:**\n\`\`\`\n${data.result?.executionResult}\n\`\`\`\n\n**Generated Code:**\n\`\`\`javascript\n${data.result?.generatedCode}\n\`\`\``;
-                   
-                   const aiMsg: Message = { role: 'assistant', content: updatedStream, timestamp: Date.now() };
-                   const finalMessages = [...newMessages, aiMsg];
-                   setMessages(finalMessages);
-                   setStreamingContent('');
-                   saveCurrentConversation(finalMessages, activeId);
-                   
-                   setIsLoading(false);
-                   setMsgStatus('idle');
-                   setCurrentAgentTaskId(null);
-                   unsub();
-                } else if (data.status === 'failed') {
-                   updatedStream += `\n**Error:** ${data.error}`;
-                   
-                   const aiMsg: Message = { role: 'assistant', content: updatedStream, timestamp: Date.now() };
-                   const finalMessages = [...newMessages, aiMsg];
-                   setMessages(finalMessages);
-                   setStreamingContent('');
-                   saveCurrentConversation(finalMessages, activeId);
-                   
-                   setIsLoading(false);
-                   setMsgStatus('idle');
-                   setCurrentAgentTaskId(null);
-                   unsub();
-                } else {
-                   setStreamingContent(updatedStream + "> Agent is orchestrating resources and evaluating logic...\n> Check the browser console for Sandbox execution logs.");
-                }
-              }
-            }, (error) => {
-                console.error("Firestore Error:", error);
-                const aiMsg: Message = { role: 'assistant', content: `[SYSTEM_ERROR] Firestore synchronization failed: ${error.message}`, timestamp: Date.now() };
-                setMessages([...newMessages, aiMsg]);
-                setStreamingContent('');
-                setIsLoading(false);
-                setMsgStatus('idle');
-                setCurrentAgentTaskId(null);
-                unsub();
-            });
-          });
-        });
+        pollTaskCompletion(taskId, newMessages, activeId);
         return;
       }
 
@@ -918,6 +1050,47 @@ export default function App() {
               </button>
             </div>
           ))}
+
+          {userProjects.length > 0 && (
+            <div className="border-t border-[#1a1a1a] mt-2 pt-2">
+              <button 
+                onClick={() => setShowProjects(!showProjects)}
+                className="w-full flex items-center justify-between px-3 py-2 
+                  text-xs text-[#555] hover:text-[#888] transition-colors">
+                <span className="font-bold uppercase tracking-wider">
+                  My Projects ({userProjects.length})
+                </span>
+                <span>{showProjects ? '▲' : '▼'}</span>
+              </button>
+              
+              {showProjects && (
+                <div className="space-y-1 pb-2">
+                  {userProjects.slice(0,5).map(p => (
+                    <div key={p.id} className="px-3 py-2 rounded-xl hover:bg-[#111] 
+                      transition-colors cursor-default">
+                      <p className="text-xs text-[#888] truncate font-medium">
+                        {p.prompt.slice(0, 35)}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {p.deploy_url && p.deploy_url.startsWith('http') && (
+                          <a href={p.deploy_url} target="_blank" rel="noreferrer"
+                            className="text-[10px] text-green-500 hover:text-green-400">
+                            Live ↗
+                          </a>
+                        )}
+                        {p.repo_url && (
+                          <a href={p.repo_url} target="_blank" rel="noreferrer"
+                            className="text-[10px] text-[#555] hover:text-[#888]">
+                            GitHub ↗
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="p-5 border-t border-white/5 bg-[#0a0a0a]/50 flex justify-between items-center backdrop-blur-md">
@@ -1213,6 +1386,42 @@ export default function App() {
                   className="text-[#555] hover:text-red-400 p-2 hover:bg-white/5 rounded-full transition-all">
                   <X size={16} />
                 </button>
+              </div>
+            )}
+
+            <AgentProgressPanel
+              taskId={currentAgentTaskId}
+              steps={agentTaskSteps}
+              isActive={agentMode && (msgStatus === 'thinking' || msgStatus === 'streaming')}
+            />
+
+            {lastProject && agentMode && (
+              <div className="mx-4 mb-4 p-4 bg-[#0d1a0d] border border-green-500/30 rounded-2xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle2 size={14} className="text-green-400" />
+                  <span className="text-xs font-bold text-green-400 uppercase tracking-wider">
+                    Project Complete
+                  </span>
+                </div>
+                <p className="text-sm text-white mb-3 font-medium">{lastProject.prompt}</p>
+                <div className="flex flex-wrap gap-2">
+                  {lastProject.repo_url && (
+                    <a href={lastProject.repo_url} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 
+                        bg-[#1a1a1a] border border-[#2a2a2a] text-[#aaa] 
+                        hover:text-white hover:border-[#444] rounded-lg transition-all">
+                      GitHub Repo
+                    </a>
+                  )}
+                  {lastProject.deploy_url && lastProject.deploy_url.startsWith('http') && (
+                    <a href={lastProject.deploy_url} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 
+                        bg-green-900/40 border border-green-700/50 text-green-300 
+                        hover:bg-green-900/60 rounded-lg transition-all font-semibold">
+                      🚀 View Live Site
+                    </a>
+                  )}
+                </div>
               </div>
             )}
 

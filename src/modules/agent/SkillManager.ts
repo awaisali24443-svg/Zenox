@@ -75,28 +75,34 @@ export class SkillManager {
     };
 
     try {
-      // Save the skill in draft/pending state
-      await setDoc(doc(db, 'skills', newSkill.id), newSkill);
+      if (!!import.meta.env.VITE_FIREBASE_API_KEY) {
+        // Save the skill in draft/pending state
+        await setDoc(doc(db, 'skills', newSkill.id), newSkill);
 
-      // Trigger an email notification using the Firebase Trigger Email Extension pattern
-      await addDoc(collection(db, 'mail'), {
-        to: this.ownerEmail,
-        message: {
-          subject: `🤖 Zenox Needs Approval: New Skill Synthesized`,
-          text: `Zenox has synthesized a new skill for: "${goalDescription}". 
-It successfully passed Sandbox tests. 
-
-Code:
-${mockGeneratedCode}
-
-Please review in your admin dashboard and approve to activate it.`,
-          html: `<p>Zenox has synthesized a new skill for: <strong>"${goalDescription}"</strong>.</p>
-<p>It successfully passed Sandbox tests.</p>
-<pre><code>${mockGeneratedCode}</code></pre>
-<p><a href="https://your-zenox-domain.com/admin/skills/${newSkill.id}">Click here to review and approve</a>.</p>`
+        // Notify owner via backend (keeps email API key server-side)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const apiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
+          
+          await fetch(`${apiUrl}/api/agent/skills/notify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': apiKey
+            },
+            body: JSON.stringify({
+              skill_id: newSkill.id,
+              skill_name: newSkill.name,
+              skill_description: goalDescription
+            })
+          });
+          console.log(`[SkillManager] Saved as pending_approval and sent email trigger to backend`);
+        } catch {
+          console.log('[SkillManager] Could not send notification email');
         }
-      });
-      console.log(`[SkillManager] Saved as pending_approval and sent email trigger to ${this.ownerEmail}`);
+      } else {
+        console.log(`[SkillManager] Firebase not initialized, skipping save for ${newSkill.id}`);
+      }
     } catch (e) {
       console.error(`[SkillManager] Failed to persist skill or email trigger:`, e);
     }
