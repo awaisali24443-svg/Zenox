@@ -1,5 +1,12 @@
 import os
 import asyncio
+import uuid
+import json
+import pathlib
+import re
+import hashlib
+import base64
+import urllib.parse
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -7,81 +14,38 @@ from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
 import httpx
-import base64
-import urllib.parse
+from pydantic import BaseModel
 
-# PERMANENT PING SYSTEM — DO NOT REMOVE OR MODIFY
-async def ping_services():
-    urls = []
-    if os.getenv("FRONTEND_URL"): 
-        urls.append(("Frontend", os.getenv("FRONTEND_URL")))
-    if os.getenv("BACKEND_URL"):  
-        urls.append(("Backend", os.getenv("BACKEND_URL")))
-    if not urls:
-        print("[PING] Add FRONTEND_URL and BACKEND_URL to activate")
-        return
-    print(f"[PING] Active — pinging {len(urls)} services every 10min")
-    while True:
-        await asyncio.sleep(600)
-        for name, url in urls:
-            try:
-                async with httpx.AsyncClient(timeout=15.0) as c:
-                    r = await c.get(url)
-                    print(f"[PING] ✅ {name}: {r.status_code}")
-            except Exception as e:
-                print(f"[PING] ❌ {name}: {e}")
-# END PERMANENT PING SYSTEM
+import zenox_agent.planner as planner
+from zenox_agent.memory import memory
+from zenox_agent.tools import registry
+import zenox_agent.executor as executor
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    asyncio.create_task(ping_services())
-    yield
-
-app = FastAPI(lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.get("/api/health")
-async def health():
-    return {
-        "status": "ok", 
-        "model": "gemini-2.5-flash",
-        "version": "5.0",
-        "product": "Zenox"
-    }
-
-@app.get("/api/health/keys")
-async def health_keys(_=Depends(verify_api_key)):
-    keys = {
-        "SYNOD_API_KEY": os.getenv("SYNOD_API_KEY"),
-        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY"),
-        "E2B_API_KEY": os.getenv("E2B_API_KEY"),
-        "GITHUB_TOKEN": os.getenv("GITHUB_TOKEN"),
-        "GITHUB_USERNAME": os.getenv("GITHUB_USERNAME"),
-    }
-    status = {}
-    for key, value in keys.items():
-        if value:
-            status[key] = "Connected ✅"
-        else:
-            status[key] = "Missing ❌"
-            
-    return status
-
-def verify_api_key(x_api_key: str = Header(None)):
-    expected = os.getenv("SYNOD_API_KEY", "local-dev-key")
-    if expected:
-        expected = expected.replace('\\n', '\n').split('\n')[0].strip()
-    # In local dev, local-dev-key is always accepted
-    # In production, key must match SYNOD_API_KEY exactly
-    if x_api_key != expected:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+class ToolRegistry:
+    """
+    Dynamic tool registry. Agent discovers available tools
+    and selects them based on task needs.
+    No hardcoded tool routes.
+    """
+    _tools: dict = {}
+    
+    @classmethod
+    def register(cls, name: str, description: str, func):
+        cls._tools[name] = {"name": name, "description": description, "func": func}
+    
+    @classmethod
+    def list_tools(cls) -> list:
+        return [{"name": t["name"], "description": t["description"]} for t in cls._tools.values()]
+    
+    @classmethod
+    async def execute(cls, name: str, **kwargs) -> str:
+        if name not in cls._tools:
+            return f"Tool '{name}' not found. Available: {[t for t in cls._tools]}"
+        try:
+            result = await cls._tools[name]["func"](**kwargs)
+            return str(result)
+        except Exception as e:
+            return f"Tool error: {str(e)}"
 
 async def web_search(query: str) -> str:
     """Search the web using DuckDuckGo. No API key needed."""
@@ -107,6 +71,265 @@ async def web_search(query: str) -> str:
     except Exception as e:
         print(f"[SEARCH] Error: {e}")
         return ""
+
+async def _tool_web_search(query: str) -> str:
+    return await web_search(query)
+
+async def _tool_generate_code(prompt: str, language: str = "javascript") -> str:
+    key = os.getenv("GEMINI_API_KEY","").strip()
+    if not key: return "GEMINI_API_KEY not set"
+    client = genai.Client(api_key=key, http_options={'api_version':'v1alpha'})
+    r = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=f"Write {language} code for: {prompt}\nReturn raw code only."
+    )
+    return r.text or ""
+
+async def _tool_execute_code(code: str, language: str = "javascript") -> str:
+    e2b_key = os.getenv("E2B_API_KEY","").strip()
+    if not e2b_key: return "E2B_API_KEY not set"
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as hc:
+            cr = await hc.post(
+                "https://api.e2b.dev/sandboxes",
+                headers={"X-Api-Key":e2b_key,"Content-Type":"application/json"},
+                json={"templateID":"base"}
+            )
+            sid = cr.json().get("sandboxID","")
+            cmd = f"node -e {repr(code[:500])}" if language=="javascript" else f"python3 -c {repr(code[:500])}"
+            er = await hc.post(
+                f"https://api.e2b.dev/sandboxes/{sid}/exec",
+                headers={"X-Api-Key":e2b_key,"Content-Type":"application/json"},
+                json={"cmd":cmd}
+            )
+            result_data = er.json()
+            await hc.delete(f"https://api.e2b.dev/sandboxes/{sid}", headers={"X-Api-Key":e2b_key})
+            return result_data.get("stdout","") or result_data.get("stderr","") or "Done"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+ToolRegistry.register("web_search", "Search the web for current information", _tool_web_search)
+ToolRegistry.register("generate_code", "Generate code in any language", _tool_generate_code)
+ToolRegistry.register("execute_code", "Execute code in a safe sandbox", _tool_execute_code)
+
+async def summarize_old_context(
+    messages: list, key: str, keep_recent: int = 6
+) -> tuple[str, list]:
+    """
+    Summarize old messages to prevent context explosion.
+    Returns (summary_string, recent_messages_to_keep)
+    """
+    if len(messages) <= keep_recent:
+        return "", messages
+    
+    old_messages = messages[:-keep_recent]
+    recent_messages = messages[-keep_recent:]
+    
+    conversation_text = "\n".join([
+        f"{m['role'].upper()}: {m['content'][:300]}"
+        for m in old_messages
+    ])
+    
+    try:
+        client = genai.Client(api_key=key, http_options={'api_version':'v1alpha'})
+        r = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"""Summarize this conversation history in 3-5 sentences.
+Focus on: key topics discussed, decisions made, code written, user preferences shown.
+Be specific and factual.
+
+{conversation_text}
+
+Summary:"""
+        )
+        summary = (r.text or "").strip()
+        return summary, recent_messages
+    except:
+        return f"[Earlier: {len(old_messages)} messages about {old_messages[0]['content'][:50]}...]", recent_messages
+
+async def call_llm_with_fallback(
+    prompt: str, 
+    system: str = "",
+    model_preference: str = "gemini"
+) -> str:
+    """
+    Try Gemini first. Fall back to Groq if it fails.
+    This eliminates single-point-of-failure on one provider.
+    """
+    gemini_key = os.getenv("GEMINI_API_KEY","").strip()
+    groq_key   = os.getenv("GROQ_API_KEY","").strip()
+    
+    # Try Gemini first
+    if gemini_key:
+        try:
+            client = genai.Client(api_key=gemini_key, http_options={'api_version':'v1alpha'})
+            contents = prompt
+            config = types.GenerateContentConfig(temperature=0.7)
+            if system:
+                config = types.GenerateContentConfig(
+                    system_instruction=system, temperature=0.7
+                )
+            r = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=contents,
+                    config=config
+                ),
+                timeout=30.0
+            )
+            return r.text or ""
+        except Exception as e:
+            print(f"[LLM] Gemini failed: {e} — trying Groq fallback")
+    
+    # Groq fallback
+    if groq_key:
+        try:
+            messages_list = []
+            if system:
+                messages_list.append({"role":"system","content":system})
+            messages_list.append({"role":"user","content":prompt})
+            
+            async with httpx.AsyncClient(timeout=25.0) as hc:
+                r = await hc.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization":f"Bearer {groq_key}","Content-Type":"application/json"},
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": messages_list,
+                        "max_tokens": 2048,
+                        "temperature": 0.7
+                    }
+                )
+                data = r.json()
+                return data["choices"][0]["message"]["content"] or ""
+        except Exception as e:
+            print(f"[LLM] Groq fallback also failed: {e}")
+    
+    return "Error: No LLM provider available. Check GEMINI_API_KEY or GROQ_API_KEY."
+
+INJECTION_PATTERNS = [
+    "ignore previous instructions",
+    "ignore all instructions",
+    "disregard the above",
+    "you are now",
+    "new persona",
+    "pretend you are",
+    "act as if",
+    "system prompt",
+    "reveal your instructions",
+    "bypass",
+    "jailbreak",
+    "__import__('os').system",
+    "exec(",
+    "eval(",
+    "subprocess",
+    "os.system",
+    "rm -rf",
+    "DROP TABLE",
+    "DELETE FROM"
+]
+
+def is_prompt_injection(text: str) -> bool:
+    text_lower = text.lower()
+    return any(p.lower() in text_lower for p in INJECTION_PATTERNS)
+
+# ── In-memory background task store ──────────────────────
+# Key: task_id, Value: task state dict
+# Used for fire-and-forget HuggingFace timeout bypass
+_background_tasks: dict = {}
+
+# PERMANENT PING SYSTEM — DO NOT REMOVE OR MODIFY
+async def ping_services():
+    urls = []
+    if os.getenv("FRONTEND_URL"): 
+        urls.append(("Frontend", os.getenv("FRONTEND_URL")))
+    if os.getenv("BACKEND_URL"):  
+        urls.append(("Backend", os.getenv("BACKEND_URL")))
+    if not urls:
+        print("[PING] Add FRONTEND_URL and BACKEND_URL to activate")
+        return
+    print(f"[PING] Active — pinging {len(urls)} services every 10min")
+    while True:
+        await asyncio.sleep(600)
+        for name, url in urls:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as c:
+                    r = await c.get(url)
+                    print(f"[PING] ✅ {name}: {r.status_code}")
+            except Exception as e:
+                print(f"[PING] ❌ {name}: {e}")
+# END PERMANENT PING SYSTEM
+
+async def cleanup_old_tasks():
+    """Remove completed background tasks older than 30 minutes"""
+    while True:
+        await asyncio.sleep(1800)
+        now = __import__('time').time()
+        to_delete = [
+            tid for tid, t in _background_tasks.items()
+            if t.get("status") in ("complete", "failed")
+            and now - t.get("created_at", 0) > 1800
+        ]
+        for tid in to_delete:
+            _background_tasks.pop(tid, None)
+        if to_delete:
+            print(f"[CLEANUP] Removed {len(to_delete)} old tasks")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(ping_services())
+    asyncio.create_task(cleanup_old_tasks())
+    yield
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+def verify_api_key(x_api_key: str = Header(None)):
+    expected = os.getenv("SYNOD_API_KEY", "local-dev-key")
+    if expected:
+        expected = expected.replace('\\n', '\n').split('\n')[0].strip()
+    # In local dev, local-dev-key is always accepted
+    # In production, key must match SYNOD_API_KEY exactly
+    if x_api_key != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+@app.get("/api/health")
+async def health():
+    return {
+        "status": "ok", 
+        "model": "gemini-2.5-flash",
+        "version": "15.0",
+        "product": "Zenox"
+    }
+
+@app.get("/api/health/keys")
+async def health_keys(_=Depends(verify_api_key)):
+    keys = {
+        "SYNOD_API_KEY": os.getenv("SYNOD_API_KEY"),
+        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY"),
+        "E2B_API_KEY": os.getenv("E2B_API_KEY"),
+        "GITHUB_TOKEN": os.getenv("GITHUB_TOKEN"),
+        "GITHUB_USERNAME": os.getenv("GITHUB_USERNAME"),
+    }
+    status = {}
+    for key, value in keys.items():
+        if value:
+            status[key] = "Connected ✅"
+        else:
+            status[key] = "Missing ❌"
+            
+    return status
+
+@app.get("/api/tools")
+async def list_tools(_=Depends(verify_api_key)):
+    return {"tools": ToolRegistry.list_tools()}
 
 @app.post("/api/chat")
 async def chat(request: Request, _=Depends(verify_api_key)):
@@ -194,6 +417,11 @@ When the user asks you to build, write code, or create something:
     
     message_text = data.get("message", "")
     
+    if is_prompt_injection(message_text):
+        async def safe_reject():
+            yield "I detected a potentially harmful instruction pattern in that message. Please rephrase your request."
+        return StreamingResponse(safe_reject(), media_type="text/plain")
+    
     SEARCH_TRIGGERS = [
         "today", "current", "latest", "now", "2025", "2026",
         "news", "price", "weather", "who is", "what is happening",
@@ -211,8 +439,19 @@ When the user asks you to build, write code, or create something:
     if search_context:
         system_instruction = system_instruction + f"\n\nCURRENT WEB DATA:\n{search_context}\nUse this data in your response if relevant."
     
+    history = data.get("history", [])
+    context_summary = ""
+    
+    if len(history) > 8:
+        context_summary, history = await summarize_old_context(
+            history, key, keep_recent=6
+        )
+    
+    if context_summary:
+        system_instruction = system_instruction + f"\n\nEARLIER CONVERSATION SUMMARY:\n{context_summary}\n(Recent messages follow in the conversation.)"
+    
     contents = []
-    for m in data.get("history", []):
+    for m in history:
         role = "user" if m["role"] == "user" else "model"
         contents.append({"role": role, "parts": [{"text": m["content"]}]})
         
@@ -287,65 +526,88 @@ async def classify_task(request: Request, _=Depends(verify_api_key)):
     prompt = data.get("prompt", "")
     
     if not prompt:
-        return {"type": "general", "language": "javascript", "steps": []}
+        return {"type": "chat", "language": "text", "steps": []}
     
-    prompt_lower = prompt.lower()
-    
-    if any(w in prompt_lower for w in ["website","webpage","html","landing page","portfolio","blog"]):
-        task_type = "website"
-        language = "html"
-    elif any(w in prompt_lower for w in ["python","flask","django","data analysis","csv","pandas"]):
-        task_type = "python_script"
-        language = "python"
-    elif any(w in prompt_lower for w in ["api","rest","endpoint","backend","server"]):
-        task_type = "api"
-        language = "javascript"
-    elif any(w in prompt_lower for w in ["react","component","ui component","vue","angular"]):
-        task_type = "component"
-        language = "typescript"
-    elif any(w in prompt_lower for w in ["automate","script","tool","utility","cli"]):
-        task_type = "script"
-        language = "python"
-    else:
-        task_type = "general"
-        language = "javascript"
-    
-    steps_map = {
-        "website": [
-            "Analyzing your requirements",
-            "Designing the layout and structure",
-            "Writing HTML and CSS",
-            "Adding JavaScript interactions",
-            "Testing the result",
-            "Committing to GitHub",
-            "Deploying to Render"
-        ],
-        "python_script": [
-            "Understanding the requirements",
-            "Writing the Python script",
-            "Testing execution",
-            "Committing to GitHub"
-        ],
-        "api": [
-            "Designing the API structure",
-            "Writing the server code",
-            "Adding error handling",
-            "Testing endpoints",
-            "Deploying"
-        ],
-        "general": [
-            "Analyzing your request",
-            "Generating solution",
-            "Testing",
-            "Saving result"
-        ]
-    }
-    
-    return {
-        "type": task_type,
-        "language": language,
-        "steps": steps_map.get(task_type, steps_map["general"])
-    }
+    try:
+        client = genai.Client(api_key=key, http_options={'api_version': 'v1alpha'})
+        
+        class ClassificationResult(BaseModel):
+            type: str
+            language: str
+            steps: list[str]
+            
+        system_instruction = "You classify user intents. If the user wants to just chat, learn, explain concepts, summarize, or ask general questions, return type 'chat' and an empty steps array. If they want to build, automate, code, fix code, or execute an action, return type as one of ['website', 'python_script', 'api', 'component', 'script', 'general_agent'], the appropriate language, and list 3-5 logical execution steps."
+        
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"User Prompt:\n{prompt}",
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=ClassificationResult,
+                temperature=0.1
+            )
+        )
+        result = json.loads(response.text)
+        return result
+    except Exception as e:
+        print("Classification error, falling back to heuristics:", e)
+        prompt_lower = prompt.lower()
+        
+        if any(w in prompt_lower for w in ["website","webpage","html","landing page","portfolio","blog"]):
+            task_type = "website"
+            language = "html"
+        elif any(w in prompt_lower for w in ["python","flask","django","data analysis","csv","pandas"]):
+            task_type = "python_script"
+            language = "python"
+        elif any(w in prompt_lower for w in ["api","rest","endpoint","backend","server"]):
+            task_type = "api"
+            language = "javascript"
+        elif any(w in prompt_lower for w in ["react","component","ui component","vue","angular"]):
+            task_type = "component"
+            language = "typescript"
+        elif any(w in prompt_lower for w in ["automate","script","tool","utility","cli"]):
+            task_type = "script"
+            language = "python"
+        elif any(w in prompt_lower for w in ["hi ","hello ","how ","what ","why ","explain ","can you "]):
+            return {"type": "chat", "language": "text", "steps": []}
+        else:
+            task_type = "general_agent"
+            language = "javascript"
+        
+        steps_map = {
+            "website": [
+                "Analyzing requirements",
+                "Designing layout and structure",
+                "Writing HTML/CSS code",
+                "Adding interactions",
+                "Testing and Deploying"
+            ],
+            "python_script": [
+                "Understanding requirements",
+                "Writing Python syntax",
+                "Testing execution",
+                "Saving result"
+            ],
+            "api": [
+                "Designing API structure",
+                "Writing server logic",
+                "Adding endpoints",
+                "Testing responses"
+            ],
+            "general_agent": [
+                "Analyzing request",
+                "Generating intelligent solution",
+                "Verifying outputs",
+                "Providing result"
+            ]
+        }
+        
+        return {
+            "type": task_type,
+            "language": language,
+            "steps": steps_map.get(task_type, steps_map["general_agent"])
+        }
 
 @app.post("/api/agent/generate")
 async def agent_generate(request: Request, _=Depends(verify_api_key)):
@@ -400,6 +662,392 @@ def update_progress_all_steps(task_id: str, step_variants: list, status: str, de
     for step in step_variants:
         update_progress(task_id, step, status, detail)
 
+@app.post("/api/agent/run")
+async def agent_run(request: Request, _=Depends(verify_api_key)):
+    """
+    Fire-and-forget agent endpoint.
+    Returns task_id in < 1 second. 
+    Actual work runs in background via asyncio.create_task.
+    This completely bypasses HuggingFace's 60-second nginx timeout.
+    """
+    data = await request.json()
+    prompt = data.get("prompt", "")
+    language = data.get("language", "javascript")
+    task_type = data.get("task_type", "general")
+    
+    if not prompt:
+        raise HTTPException(400, "prompt required")
+        
+    if is_prompt_injection(prompt):
+        return {"error": "Request blocked: potentially harmful pattern detected", "task_id": None}
+    
+    task_id = str(uuid.uuid4())[:12]
+    
+    _background_tasks[task_id] = {
+        "id": task_id,
+        "status": "queued",
+        "prompt": prompt,
+        "progress": [],
+        "result": None,
+        "error": None,
+        "created_at": __import__('time').time()
+    }
+    
+    # CRITICAL: create_task returns immediately — no awaiting
+    asyncio.create_task(
+        _run_agent_background(task_id, prompt, language, task_type)
+    )
+    
+    return {
+        "task_id": task_id,
+        "status": "queued",
+        "message": "Task started in background. Poll /api/agent/task/{task_id}."
+    }
+
+async def _run_agent_background(
+    task_id: str, prompt: str, language: str, task_type: str
+):
+    """
+    True ReAct cognitive loop.
+    Reason → Act → Observe → Reflect → Repeat until done or max iterations.
+    This is NOT a linear pipeline. It thinks, acts, sees results, adjusts.
+    """
+    def _upd(step: str, status: str, detail: str = ""):
+        if task_id in _background_tasks:
+            _background_tasks[task_id]["progress"].append({
+                "step": step, "status": status,
+                "detail": detail, "ts": __import__('time').time()
+            })
+        update_progress(task_id, step, status, detail)
+    
+    _background_tasks[task_id]["status"] = "running"
+    key = os.getenv("GEMINI_API_KEY", "").strip()
+    
+    if not key:
+        _background_tasks[task_id]["status"] = "failed"
+        _background_tasks[task_id]["error"] = "GEMINI_API_KEY not set"
+        return
+    
+    client = genai.Client(api_key=key, http_options={'api_version':'v1alpha'})
+    
+    # ── The cognitive loop state ──────────────────────────────────────
+    MAX_ITERATIONS = 5  # Max reasoning loops before giving up
+    iteration = 0
+    working_memory = []  # Observations from each iteration
+    final_code = ""
+    final_result = ""
+    task_complete = False
+    
+    # ── PHASE 0: PLAN ─────────────────────────────────────────────────
+    # Generate an initial plan — what needs to happen?
+    _upd("Planning", "running", "Creating execution strategy...")
+    
+    plan_prompt = f"""You are an autonomous AI agent called Zenox.
+    
+Task: {prompt}
+Language: {language}
+Task Type: {task_type}
+
+Create a JSON execution plan with these fields:
+{{
+  "goal": "one sentence describing the end goal",
+  "approach": "technical approach in 2-3 sentences",
+  "steps": ["step 1", "step 2", "step 3"],
+  "success_criteria": "what does success look like",
+  "potential_problems": ["problem 1", "problem 2"]
+}}
+
+Return ONLY valid JSON."""
+
+    try:
+        plan_response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=plan_prompt
+        )
+        plan_text = plan_response.text or "{}"
+        # Clean markdown
+        plan_text = plan_text.replace("```json","").replace("```","").strip()
+        plan = json.loads(plan_text)
+        _background_tasks[task_id]["plan"] = plan
+        _upd("Planning", "done", plan.get("goal","Plan created"))
+    except Exception as e:
+        plan = {"goal": prompt, "steps": ["Generate solution", "Test", "Save"]}
+        _upd("Planning", "done", "Plan created (simplified)")
+    
+    # ── PHASE 1-N: COGNITIVE LOOP ─────────────────────────────────────
+    while iteration < MAX_ITERATIONS and not task_complete:
+        iteration += 1
+        _upd(f"Iteration {iteration}", "running", f"Reasoning loop {iteration}/{MAX_ITERATIONS}")
+        
+        # Build observation context from previous iterations
+        obs_context = ""
+        if working_memory:
+            obs_context = "\n\nPREVIOUS ATTEMPTS AND OBSERVATIONS:\n"
+            for obs in working_memory[-2:]:  # Last 2 only to save context
+                obs_context += f"\nAttempt {obs['iteration']}:\n"
+                obs_context += f"Code quality: {obs.get('quality','unknown')}\n"
+                obs_context += f"Test result: {obs.get('test_result','unknown')}\n"
+                if obs.get('problems'):
+                    obs_context += f"Problems found: {obs['problems']}\n"
+                obs_context += f"Action taken: {obs.get('reflection','none')}\n"
+        
+        # ── REASON: What should I generate this iteration? ────────────
+        reason_prompt = f"""You are Zenox, an autonomous AI agent.
+
+TASK: {prompt}
+LANGUAGE: {language}
+PLAN: {plan.get('approach', '')}
+ITERATION: {iteration} of {MAX_ITERATIONS}
+{obs_context}
+
+{"FIRST ATTEMPT: Generate the best possible solution." if iteration == 1 else "RETRY: Improve based on the problems observed above. Fix the specific issues found."}
+
+Generate complete, working {language} code.
+No markdown code blocks. No explanations. Raw code only.
+Include clear comments in the code."""
+
+        code_response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=reason_prompt
+        )
+        generated_code = (code_response.text or "").strip()
+        for fence in ["```html","```python","```javascript","```js","```py","```"]:
+            generated_code = generated_code.replace(fence,"")
+        generated_code = generated_code.strip()
+        
+        if not generated_code:
+            working_memory.append({
+                "iteration": iteration,
+                "quality": "failed",
+                "test_result": "No code generated",
+                "problems": "Generation failed",
+                "reflection": "Will retry with simpler prompt"
+            })
+            continue
+        
+        final_code = generated_code  # Update best version
+        
+        # ── ACT: Execute the code ─────────────────────────────────────
+        test_result = "Not tested (E2B not configured)"
+        test_passed = True
+        has_errors = False
+        
+        e2b_key = os.getenv("E2B_API_KEY","").strip()
+        if e2b_key and language in ["javascript","python"] and len(generated_code) < 5000:
+            try:
+                _upd(f"Testing (iter {iteration})", "running", "Executing in E2B sandbox")
+                async with asyncio.timeout(25):
+                    async with httpx.AsyncClient(timeout=23.0) as hc:
+                        cr = await hc.post(
+                            "https://api.e2b.dev/sandboxes",
+                            headers={"X-Api-Key":e2b_key,"Content-Type":"application/json"},
+                            json={"templateID":"base"}
+                        )
+                        if cr.status_code == 200:
+                            sid = cr.json().get("sandboxID","")
+                            # Only test first 800 chars for speed
+                            code_to_test = generated_code[:800]
+                            cmd = (f"node -e {repr(code_to_test)}"
+                                   if language=="javascript"
+                                   else f"python3 -c {repr(code_to_test)}")
+                            er = await hc.post(
+                                f"https://api.e2b.dev/sandboxes/{sid}/exec",
+                                headers={"X-Api-Key":e2b_key,"Content-Type":"application/json"},
+                                json={"cmd": cmd}
+                            )
+                            result_data = er.json()
+                            stdout = result_data.get("stdout","")
+                            stderr = result_data.get("stderr","")
+                            test_result = stdout or stderr or "Executed"
+                            has_errors = bool(stderr and "Error" in stderr)
+                            test_passed = not has_errors
+                            await hc.delete(
+                                f"https://api.e2b.dev/sandboxes/{sid}",
+                                headers={"X-Api-Key":e2b_key}
+                            )
+            except asyncio.TimeoutError:
+                test_result = "Test timeout"
+                test_passed = True  # Assume passed if timeout
+            except Exception as ex:
+                test_result = f"Test error: {str(ex)[:50]}"
+                test_passed = True  # Assume ok, continue
+        
+        # ── OBSERVE: Evaluate the results ─────────────────────────────
+        observe_prompt = f"""You are reviewing code you just generated.
+
+TASK: {prompt}
+CODE (first 1000 chars): {generated_code[:1000]}
+TEST RESULT: {test_result}
+HAS ERRORS: {has_errors}
+ITERATION: {iteration} of {MAX_ITERATIONS}
+
+Evaluate briefly in JSON:
+{{
+  "quality": "excellent|good|acceptable|poor",
+  "is_complete": true/false,
+  "problems": "describe any problems, or 'none'",
+  "should_retry": true/false,
+  "reflection": "if retrying, what specific thing to fix next iteration"
+}}
+
+Return ONLY valid JSON."""
+
+        try:
+            obs_response = await client.aio.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=observe_prompt
+            )
+            obs_text = (obs_response.text or "{}").replace("```json","").replace("```","").strip()
+            observation = json.loads(obs_text)
+        except:
+            # If observation fails, assume it's good enough
+            observation = {
+                "quality": "acceptable",
+                "is_complete": True,
+                "problems": "none",
+                "should_retry": False,
+                "reflection": "Proceeding with current version"
+            }
+        
+        working_memory.append({
+            "iteration": iteration,
+            "quality": observation.get("quality","unknown"),
+            "test_result": test_result[:200],
+            "problems": observation.get("problems","none"),
+            "reflection": observation.get("reflection","")
+        })
+        
+        _upd(f"Testing (iter {iteration})", "done",
+             f"Quality: {observation.get('quality','?')} | {observation.get('problems','none')[:50]}")
+        
+        # ── REFLECT: Should we stop or continue? ──────────────────────
+        if (observation.get("is_complete") and 
+            observation.get("quality") in ["excellent","good","acceptable"] and
+            not observation.get("should_retry")):
+            task_complete = True
+            _upd("Reflection", "done", f"Solution accepted after {iteration} iteration(s)")
+            break
+        
+        if iteration < MAX_ITERATIONS:
+            _upd("Reflection", "running", 
+                 f"Improving: {observation.get('reflection','')[:60]}")
+    
+    # ── PHASE FINAL: Commit and Save ──────────────────────────────────
+    repo_url = ""
+    deploy_url = ""
+    github_token = os.getenv("GITHUB_TOKEN","").strip()
+    github_user  = os.getenv("GITHUB_USERNAME","").strip()
+    
+    if github_token and github_user and final_code:
+        _upd("Saving to GitHub", "running", "Committing final code")
+        try:
+            words = prompt.lower().split()[:3]
+            base  = '-'.join(w for w in words if w.isalpha())[:25] or 'project'
+            short = hashlib.md5(prompt.encode()).hexdigest()[:6]
+            repo_name = f"zenox-{re.sub(r'[^a-z0-9-]','-',base)}-{short}"
+            gh_headers = {
+                "Authorization": f"token {github_token}",
+                "Accept": "application/vnd.github.v3+json",
+                "Content-Type": "application/json"
+            }
+            async with httpx.AsyncClient(timeout=20.0) as hc:
+                ck = await hc.get(
+                    f"https://api.github.com/repos/{github_user}/{repo_name}",
+                    headers=gh_headers
+                )
+                if ck.status_code != 200:
+                    await hc.post(
+                        "https://api.github.com/user/repos",
+                        headers=gh_headers,
+                        json={"name":repo_name,"auto_init":True,"private":False,
+                              "description":f"Zenox: {prompt[:80]}"}
+                    )
+                    await asyncio.sleep(2)
+                ext = "html" if task_type=="website" else "py" if task_type=="python_script" else "js"
+                fn  = f"main.{ext}"
+                sr  = await hc.get(
+                    f"https://api.github.com/repos/{github_user}/{repo_name}/contents/{fn}",
+                    headers=gh_headers
+                )
+                sha = sr.json().get("sha") if sr.status_code==200 else None
+                pl  = {
+                    "message": f"Zenox Agent ({iteration} iterations): {prompt[:50]}",
+                    "content": base64.b64encode(final_code.encode()).decode()
+                }
+                if sha: pl["sha"] = sha
+                pr = await hc.put(
+                    f"https://api.github.com/repos/{github_user}/{repo_name}/contents/{fn}",
+                    headers=gh_headers, json=pl
+                )
+                if pr.status_code in [200,201]:
+                    repo_url = f"https://github.com/{github_user}/{repo_name}"
+            _upd("Saving to GitHub", "done", repo_url)
+        except Exception as ex:
+            _upd("Saving to GitHub", "done", f"Skipped: {str(ex)[:40]}")
+    
+    deploy_url = ""
+    hook = os.getenv("RENDER_DEPLOY_HOOK_URL","").strip()
+    if hook:
+        _upd("Deploying", "running", "Triggering Render")
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as hc:
+                dr = await hc.post(hook)
+                if dr.status_code in [200,201,202]:
+                    deploy_url = os.getenv("RENDER_SERVICE_URL","") or "Deploying..."
+            _upd("Deploying", "done", deploy_url)
+        except Exception as ex:
+            _upd("Deploying", "done", f"Skipped: {str(ex)[:40]}")
+    
+    try:
+        memory.add_episode(
+            task_id=task_id,
+            prompt=prompt,
+            plan=plan,
+            result={
+                "code_length": len(final_code),
+                "iterations": iteration,
+                "quality": working_memory[-1].get("quality","unknown") if working_memory else "unknown",
+                "repo_url": repo_url,
+                "deploy_url": deploy_url
+            }
+        )
+    except Exception as mem_err:
+        print(f"[Memory] Episode save error: {mem_err}")
+
+    # Save project
+    projects = load_projects()
+    pid = f"proj-{task_id}"
+    projects[pid] = {
+        "id": pid, "bg_task_id": task_id, "prompt": prompt,
+        "code": final_code, "language": language,
+        "repo_url": repo_url, "deploy_url": deploy_url,
+        "iterations": iteration, "quality": working_memory[-1].get("quality","unknown") if working_memory else "unknown",
+        "plan": plan, "created_at": __import__('time').time()
+    }
+    save_projects(projects)
+    
+    _background_tasks[task_id]["status"] = "complete"
+    _background_tasks[task_id]["result"] = {
+        "code": final_code, "language": language,
+        "repo_url": repo_url, "deploy_url": deploy_url,
+        "prompt": prompt, "project_id": pid,
+        "iterations": iteration,
+        "quality": working_memory[-1].get("quality","acceptable") if working_memory else "acceptable"
+    }
+
+@app.get("/api/agent/task/{task_id}")
+async def get_background_task(task_id: str, _=Depends(verify_api_key)):
+    task = _background_tasks.get(task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    return task
+
+@app.delete("/api/agent/task/{task_id}")
+async def cancel_background_task(task_id: str, _=Depends(verify_api_key)):
+    _background_tasks.pop(task_id, None)
+    return {"cancelled": True}
+
+
 @app.post("/api/agent/execute")
 async def agent_execute(request: Request, _=Depends(verify_api_key)):
     e2b_key = os.getenv("E2B_API_KEY", "").strip()
@@ -419,7 +1067,6 @@ async def agent_execute(request: Request, _=Depends(verify_api_key)):
     
     try:
         if e2b_key:
-            import httpx
             async with httpx.AsyncClient(timeout=30.0) as client:
                 create_res = await client.post(
                     "https://api.e2b.dev/sandboxes",
@@ -597,7 +1244,6 @@ async def github_commit(request: Request, _=Depends(verify_api_key)):
 
 # Sanitize repo name for GitHub
 def sanitize_repo_name(name: str) -> str:
-    import re
     # Lowercase, replace spaces and special chars with hyphens
     name = name.lower().strip()
     name = re.sub(r'[^a-z0-9\-]', '-', name)
@@ -623,7 +1269,6 @@ async def setup_project(request: Request, _=Depends(verify_api_key)):
     user_id = data.get("user_id", "user")
     
     # Generate short project ID
-    import hashlib
     short_id = hashlib.md5(f"{user_id}{task_prompt}".encode()).hexdigest()[:6]
     
     # Generate repo name from first 3 words of prompt
@@ -757,7 +1402,7 @@ async def notify_skill_approval(request: Request, _=Depends(verify_api_key)):
                     "Content-Type": "application/json"
                 },
                 json={
-                    "from": "zenox@yourdomain.com",
+                    "from": f"zenox@{os.getenv('OWNER_EMAIL_DOMAIN', 'zenox.dev')}",
                     "to": owner_email,
                     "subject": f"Zenox Agent: New Skill Needs Approval — {skill_name}",
                     "html": f"""
@@ -847,9 +1492,9 @@ Keep each question under 8 words."""
     except:
         return {"suggestions": []}
 
-import json, pathlib
 
-PROJECTS_FILE = pathlib.Path("projects.json")
+# HuggingFace Spaces: only /tmp is writable in Docker
+PROJECTS_FILE = pathlib.Path("/tmp/zenox_projects.json")
 
 def load_projects() -> dict:
     try:

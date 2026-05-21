@@ -6,7 +6,7 @@ import {
   FileText, Zap, Scissors, BookOpen, Lightbulb, Moon, Sun,
   AlertTriangle, AlertCircle, Info
 } from 'lucide-react';
-import { IdleBrain } from './modules/agent/IdleBrain';
+import { AgentCore } from './modules/agent/AgentCore';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 let rawApiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
@@ -49,18 +49,18 @@ const ZenoxLogo = ({ size = 36, animate = false, className = '' }: { size?: numb
     {/* Outer glow ring */}
     <div
       style={{ width: size, height: size }}
-      className="absolute rounded-[28%] bg-gradient-to-br from-emerald-400/20 to-green-600/20 
+      className="absolute rounded-[28%] bg-white/5 
         blur-sm scale-110"
     />
     {/* Main body */}
     <div
       style={{ width: size, height: size }}
       className="relative rounded-[28%] bg-gradient-to-br from-[#1a1a1a] via-[#111] to-[#0a0a0a] 
-        border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.15)] 
+        border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.05)] 
         flex items-center justify-center overflow-hidden"
     >
       {/* Shimmer layer */}
-      <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-emerald-500/5 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent" />
       
       {/* Z lettermark */}
       <svg
@@ -71,17 +71,11 @@ const ZenoxLogo = ({ size = 36, animate = false, className = '' }: { size?: numb
       >
         <path
           d="M4 5h16M4 5l16 14M4 19h16"
-          stroke="url(#zGrad)"
+          stroke="#fff"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <defs>
-          <linearGradient id="zGrad" x1="4" y1="5" x2="20" y2="19">
-            <stop offset="0%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#34d399" />
-          </linearGradient>
-        </defs>
       </svg>
     </div>
     
@@ -89,9 +83,8 @@ const ZenoxLogo = ({ size = 36, animate = false, className = '' }: { size?: numb
     <div
       style={{ width: size * 0.22, height: size * 0.22 }}
       className="absolute -bottom-0.5 -right-0.5 rounded-full 
-        bg-gradient-to-br from-emerald-400 to-green-500 
-        border-2 border-[#0a0a0a]
-        shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+        bg-white
+        border-2 border-[#0a0a0a]"
     />
   </div>
 );
@@ -107,6 +100,9 @@ const AgentProgressPanel = ({
 }) => {
   const [progress, setProgress] = useState<any[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
+  const [iterations, setIterations] = useState(0);
+  const [bgTaskData, setBgTaskData] = useState<any>(null);
+  
   const apiUrl = import.meta.env.VITE_API_URL || '';
   const apiKey = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
   
@@ -115,7 +111,7 @@ const AgentProgressPanel = ({
     
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`${apiUrl}/api/agent/progress/${taskId}`, {
+        const res = await fetch(`${apiUrl}/api/agent/task/${taskId}`, {
           headers: { 'X-API-Key': apiKey }
         });
         const data = await res.json();
@@ -123,6 +119,12 @@ const AgentProgressPanel = ({
           setProgress(data.progress);
           const doneCount = data.progress.filter((p:any) => p.status === 'done').length;
           setCurrentStep(doneCount);
+          
+          const iterCount = data.progress.filter(
+            (p:any) => p.step.startsWith('Iteration')
+          ).length;
+          setIterations(iterCount);
+          setBgTaskData(data);
         }
       } catch {}
     }, 1500);
@@ -134,13 +136,13 @@ const AgentProgressPanel = ({
   
   return (
     <div className="mx-4 mb-3 p-4 rounded-[18px] slide-up
-      bg-gradient-to-b from-[#0d1410] to-[#0a0f0a]
-      border border-emerald-900/20">
+      bg-[#0a0a0a]
+      border border-white/10">
       
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
-          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+          <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"/>
+          <span className="text-[10px] font-bold text-white uppercase tracking-wider">
             Agent Working
           </span>
         </div>
@@ -152,7 +154,7 @@ const AgentProgressPanel = ({
       {/* Progress bar */}
       <div className="w-full h-0.5 bg-[rgba(255,255,255,0.04)] rounded-full mb-4">
         <div 
-          className="h-full bg-gradient-to-r from-emerald-600 to-green-500 
+          className="h-full bg-white 
             rounded-full transition-all duration-700 ease-out"
           style={{
             width: `${steps.length ? 
@@ -160,6 +162,24 @@ const AgentProgressPanel = ({
           }}
         />
       </div>
+      
+      {bgTaskData?.plan && (
+        <div className="mb-3 px-1">
+          <p className="text-[10px] text-[#444] font-mono leading-relaxed">
+            <span className="text-emerald-500/70">Goal: </span>
+            {bgTaskData.plan.goal?.slice(0,80)}
+          </p>
+        </div>
+      )}
+      
+      {iterations > 1 && (
+        <div className="flex items-center gap-1.5 mb-3">
+          <div className="w-1 h-1 rounded-full bg-amber-400"/>
+          <span className="text-[9px] text-amber-400 font-medium">
+            Self-correcting... iteration {iterations}
+          </span>
+        </div>
+      )}
       
       {/* Steps */}
       <div className="space-y-2.5">
@@ -173,12 +193,12 @@ const AgentProgressPanel = ({
             <div key={i} className="flex items-center gap-3">
               <div className={`w-4 h-4 rounded-full flex items-center justify-center 
                 flex-shrink-0 transition-all duration-300 ${
-                done    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
-                running ? 'bg-emerald-500/20 border border-emerald-500/50 animate-pulse' :
+                done    ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.4)]' :
+                running ? 'bg-white/20 border border-white/50 animate-pulse' :
                           'bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)]'
               }`}>
                 {done && <Check size={9} className="text-black" strokeWidth={3}/>}
-                {running && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"/>}
+                {running && <div className="w-1.5 h-1.5 rounded-full bg-white"/>}
               </div>
               <span className={`text-[11.5px] transition-colors ${
                 done    ? 'text-[#3a3a3a] line-through' :
@@ -196,6 +216,20 @@ const AgentProgressPanel = ({
 };
 
 export default function App() {
+  useEffect(() => {
+    // Initialize agent singleton and attach to window
+    // so all parts of the app can access it
+    if (!(window as any).awaisAgent) {
+      try {
+        const agentInstance = AgentCore.getInstance();
+        (window as any).awaisAgent = agentInstance;
+        console.log('[Zenox] AgentCore initialized');
+      } catch (e) {
+        console.error('[Zenox] AgentCore init failed:', e);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!localStorage.getItem('zenox-user-id')) {
       const id = 'user-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
@@ -269,14 +303,14 @@ export default function App() {
   
   useEffect(() => { fetchUserProjects(); }, []);
 
-  const pollTaskCompletion = async (taskId: string, newMessages: Message[], activeId: string) => {
-    const API_URL = import.meta.env.VITE_API_URL || '';
-    const API_KEY = import.meta.env.VITE_SYNOD_API_KEY || 'local-dev-key';
-    const maxAttempts = 60; // 5 minutes max
+  const pollTaskCompletion = async (
+    bgTaskId: string,
+    newMessages: Message[],
+    activeId: string
+  ) => {
+    const maxAttempts = 120; // 10 minutes
     let attempts = 0;
     
-    const agent = (window as any).awaisAgent;
-
     const poll = setInterval(async () => {
       attempts++;
       if (attempts > maxAttempts) {
@@ -286,41 +320,36 @@ export default function App() {
         return;
       }
       
-      const localTask = agent?.taskManager?.getTask(taskId);
-      if (localTask && localTask.status === 'failed') {
-        clearInterval(poll);
-        // Add failure message to chat
-        const errorMsg: Message = {
-          role: 'assistant',
-          content: `❌ Task Failed:\n\n${localTask.error || "Unknown error occurred during task execution."}`,
-          timestamp: Date.now()
-        };
-        const finalMessages = [...newMessages, errorMsg];
-        setMessages(finalMessages);
-        setStreamingContent('');
-        saveCurrentConversation(finalMessages, activeId);
-        setIsLoading(false);
-        setMsgStatus('idle');
-        setCurrentAgentTaskId(null);
-        return;
-      }
-
       try {
+        // Poll the new fire-and-forget background task endpoint
         const res = await fetch(
-          `${API_URL}/api/projects/result/${taskId}`,
+          `${API_URL}/api/agent/task/${bgTaskId}`,
           { headers: { 'X-API-Key': API_KEY } }
         );
-        if (res.ok) {
-          const project = await res.json();
-          setLastProject(project);
+        
+        if (!res.ok) return; // Still initializing
+        
+        const bgTask = await res.json();
+        
+        if (bgTask.status === 'complete' && bgTask.result) {
           clearInterval(poll);
+          const result = bgTask.result;
+          setLastProject(result);
           
-          // Add completion message to chat
           const completionMsg: Message = {
             role: 'assistant',
-            content: `✅ Done! Here's what I built:\n\n**Project:** ${project.prompt}\n${project.repo_url ? `**GitHub:** ${project.repo_url}\n` : ''}${project.deploy_url ? `**Live at:** ${project.deploy_url}` : '**Code generated** — GitHub/Render not configured yet'}`,
+            content: [
+              `✅ **Done!**`,
+              ``,
+              `**Task:** ${result.prompt}`,
+              result.repo_url ? `**GitHub:** ${result.repo_url}` : '',
+              result.deploy_url ? `**Live at:** ${result.deploy_url}` : '',
+              !result.repo_url && !result.deploy_url 
+                ? `**Code generated** — download below ↓` : ''
+            ].filter(Boolean).join('\n'),
             timestamp: Date.now() / 1000
           };
+          
           const finalMessages = [...newMessages, completionMsg];
           setMessages(finalMessages);
           setStreamingContent('');
@@ -328,13 +357,46 @@ export default function App() {
           setIsLoading(false);
           setMsgStatus('idle');
           setCurrentAgentTaskId(null);
-        } else {
-            // Still polling, you could optionally fetch Task status, but UI updates via AgentProgressPanel now
-            // Just update the stream mildly
-            setStreamingContent(`> Task ID: ${taskId}\n> Synthesizing code...`);
+          
+          // Cleanup background task
+          fetch(`${API_URL}/api/agent/task/${bgTaskId}`, {
+            method: 'DELETE',
+            headers: { 'X-API-Key': API_KEY }
+          }).catch(() => {});
+          return;
         }
-      } catch {}
-    }, 5000); // poll every 5 seconds
+        
+        if (bgTask.status === 'failed') {
+          clearInterval(poll);
+          const errorMsg: Message = {
+            role: 'assistant',
+            content: `❌ **Task Failed**\n\n${bgTask.error || 'Unknown error'}`,
+            timestamp: Date.now() / 1000
+          };
+          const finalMessages = [...newMessages, errorMsg];
+          setMessages(finalMessages);
+          setStreamingContent('');
+          saveCurrentConversation(finalMessages, activeId);
+          setIsLoading(false);
+          setMsgStatus('idle');
+          setCurrentAgentTaskId(null);
+          return;
+        }
+        
+        // Still running — update streaming text with latest progress
+        if (bgTask.progress?.length > 0) {
+          const lastStep = bgTask.progress[bgTask.progress.length - 1];
+          const iterSteps = bgTask.progress.filter(
+            (p:any) => p.step.startsWith('Iteration')
+          ).length;
+          setStreamingContent(
+            `> ${lastStep.step}${iterSteps > 1 ? ` (self-correcting, pass ${iterSteps})` : ''}` +
+            `\n> ${lastStep.detail || 'Working...'}`
+          );
+        }
+        
+      } catch { /* polling failure is non-fatal */ }
+    }, 2000); // poll every 2 seconds
   };
 
   useEffect(() => {
@@ -364,7 +426,7 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   
-  const [agentMode, setAgentMode] = useState(true);
+  const [agentMode, setAgentMode] = useState(false);
   const [showInputOptions, setShowInputOptions] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -476,6 +538,7 @@ export default function App() {
   }, []);
 
   // Strategy #3: Proactive Reverse Prompting (Idle Brain)
+  /*
   useEffect(() => {
     if (agentMode) {
       const idleBrain = IdleBrain.getInstance();
@@ -491,6 +554,7 @@ export default function App() {
       };
     }
   }, [agentMode]);
+  */
 
   const isUserScrolling = useRef(false);
 
@@ -683,13 +747,14 @@ export default function App() {
         const agent = (window as any).awaisAgent;
         if (!agent) throw new Error("AgentCore not initialized");
         
+        let classification = null;
         try {
           const classRes = await fetch(`${API_URL}/api/agent/classify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
             body: JSON.stringify({ prompt: userMsg.content })
           });
-          const classification = await classRes.json();
+          classification = await classRes.json();
           setAgentTaskSteps(classification.steps || []);
         } catch (err) {
           console.error("Classification failed:", err);
@@ -701,12 +766,28 @@ export default function App() {
           ]);
         }
         
-        const userId = localStorage.getItem('zenox-user-id') || 'local-user';
-        const taskId = await agent.submitTask(userId, userMsg.content);
-        setCurrentAgentTaskId(taskId);
-        
-        pollTaskCompletion(taskId, newMessages, activeId);
-        return;
+        if (!classification || classification.type !== 'chat') {
+          // Use fire-and-forget endpoint — returns task_id instantly
+          const runRes = await fetch(`${API_URL}/api/agent/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+            body: JSON.stringify({
+              prompt: userMsg.content,
+              language: classification?.language || 'javascript',
+              task_type: classification?.type || 'general'
+            })
+          });
+          
+          if (!runRes.ok) throw new Error(`Agent start failed: ${runRes.status}`);
+          const { task_id: bgTaskId } = await runRes.json();
+          
+          setCurrentAgentTaskId(bgTaskId);
+          pollTaskCompletion(bgTaskId, newMessages, activeId);
+          return;
+        } else {
+          setStreamingContent("");
+          setAgentTaskSteps([]);
+        }
       }
 
       const response = await fetch(`${API_URL}/api/chat`, {
@@ -847,15 +928,15 @@ export default function App() {
   };
 
   const handleRegenerate = () => {
-    const lastAssistantIndex = messages.map(m => m.role)
-      .lastIndexOf('assistant');
-    if (lastAssistantIndex <= 0) return;
-    const lastUserMsg = messages
-      .slice(0, lastAssistantIndex)
-      .filter(m => m.role === 'user')
-      .at(-1);
-    if (!lastUserMsg) return;
-    setMessages(prev => prev.slice(0, lastAssistantIndex));
+    const userMsgs = messages.filter(m => m.role === 'user');
+    if (userMsgs.length === 0) return; // Nothing to regenerate
+    const lastUserMsg = userMsgs[userMsgs.length - 1];
+    if (!lastUserMsg?.content) return;
+    
+    // Remove messages from last user message onward
+    const lastUserIdx = messages.map(m=>m.role).lastIndexOf('user');
+    if (lastUserIdx === -1) return;
+    setMessages(prev => prev.slice(0, lastUserIdx));
     handleSendWithMessage(lastUserMsg.content);
   };
 
@@ -1038,7 +1119,7 @@ export default function App() {
   const [expandedShortcuts, setExpandedShortcuts] = useState(false);
 
   return (
-    <div className="flex h-[100dvh] w-full bg-atmosphere text-[#f0f0f0] overflow-hidden selection:bg-green-500/30">
+    <div className="flex h-[100dvh] w-full bg-atmosphere text-[#f0f0f0] overflow-hidden selection:bg-white/20">
       
       {/* Toast */}
       <div className={`fixed bottom-6 right-6 z-[100] transition-all duration-300 ${toast ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-4 opacity-0 scale-95 pointer-events-none'}`}>
@@ -1073,11 +1154,11 @@ export default function App() {
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[9px] 
             font-bold uppercase tracking-wider ${
             backendStatus === 'online' 
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+              ? 'bg-white/10 text-white border border-white/20' 
               : 'bg-red-500/10 text-red-400 border border-red-500/20'
           }`}>
             <div className={`w-1.5 h-1.5 rounded-full ${
-              backendStatus === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+              backendStatus === 'online' ? 'bg-white animate-pulse' : 'bg-red-400'
             }`} />
             {backendStatus === 'online' ? 'live' : 'off'}
           </div>
@@ -1087,11 +1168,10 @@ export default function App() {
           <button onClick={startNewChat}
             className="w-full flex items-center justify-center gap-2 
               py-2.5 px-4 rounded-[14px] text-[13px] font-semibold
-              bg-gradient-to-r from-emerald-600 to-green-600
-              hover:from-emerald-500 hover:to-green-500
-              text-white transition-all duration-200 active:scale-[0.98]
-              shadow-[0_2px_12px_rgba(16,185,129,0.25)]
-              hover:shadow-[0_4px_20px_rgba(16,185,129,0.4)]">
+              bg-white hover:bg-gray-200
+              text-black transition-all duration-200 active:scale-[0.98]
+              shadow-[0_2px_12px_rgba(255,255,255,0.1)]
+              hover:shadow-[0_4px_20px_rgba(255,255,255,0.2)]">
             <Plus size={15} className="opacity-90" />
             New Chat
           </button>
@@ -1134,10 +1214,10 @@ export default function App() {
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 
                   mx-1 rounded-[12px] text-left transition-all duration-150 group
                   ${isActive 
-                    ? 'bg-[rgba(16,185,129,0.08)] border border-[rgba(16,185,129,0.15)]' 
+                    ? 'bg-white/10 border border-white/20' 
                     : 'hover:bg-[rgba(255,255,255,0.03)] border border-transparent'
                   }`}>
-                <MessageSquare size={13} className={isActive ? 'text-emerald-400' : 'text-[#333]'} />
+                <MessageSquare size={13} className={isActive ? 'text-white' : 'text-[#333]'} />
                 <div className="flex-1 min-w-0">
                   <p className={`text-[12px] truncate font-medium ${isActive ? 'text-white' : 'text-[#666]'}`}>
                     {conv.title || "Untitled Session"}
@@ -1179,7 +1259,7 @@ export default function App() {
                       <div className="flex items-center gap-2 mt-1">
                         {p.deploy_url && p.deploy_url.startsWith('http') && (
                           <a href={p.deploy_url} target="_blank" rel="noreferrer"
-                            className="text-[10px] text-emerald-500 hover:text-emerald-400">
+                            className="text-[10px] text-white hover:text-gray-300">
                             Live ↗
                           </a>
                         )}
@@ -1215,7 +1295,7 @@ export default function App() {
             <Menu size={20} />
           </button>
           <div className="flex items-center gap-2">
-            <ZenoxLogo size={18} className="text-green-500" />
+            <ZenoxLogo size={18} className="text-white" />
             <div className="font-semibold italic text-white tracking-tight text-sm">Zenox</div>
           </div>
           <button onClick={() => setSettingsOpen(true)} className="p-2 text-[#a0a0a0] active:text-white bg-white/5 rounded-full" aria-label="Settings">
@@ -1252,7 +1332,7 @@ export default function App() {
 
         {/* Chat Area */}
         <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-8 md:px-8 shrink-0 relative min-h-0 scrollbar-thin">
-          <div className="max-w-3xl mx-auto h-full flex flex-col justify-end">
+          <div className="max-w-3xl mx-auto min-h-full flex flex-col justify-end">
             
             {(messages.length === 0 || (messages.length === 1 && messages[0].content.includes('explore today'))) && !streamingContent ? (
               <div className="h-full flex flex-col items-center justify-center 
@@ -1260,7 +1340,7 @@ export default function App() {
                 
                 {/* Logo with glow */}
                 <div className="relative mb-8">
-                  <div className="absolute inset-0 bg-emerald-500/10 blur-2xl rounded-full scale-150" />
+                  <div className="absolute inset-0 bg-white/5 blur-2xl rounded-full scale-150" />
                   <ZenoxLogo size={56} animate />
                 </div>
                 
@@ -1277,9 +1357,9 @@ export default function App() {
                 {/* Agent mode badge */}
                 {agentMode && (
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                    bg-emerald-500/8 border border-emerald-500/20 mb-8 mt-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                    bg-white/5 border border-white/10 mb-8 mt-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"/>
+                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">
                       Agent Mode Active
                     </span>
                   </div>
@@ -1299,10 +1379,10 @@ export default function App() {
                       style={{animationDelay:`${i*60}ms`}}
                       onClick={() => handleSendWithMessage(ex.text)}
                       className="group flex items-center gap-3 p-3.5 rounded-[14px]
-                        bg-[#0f0f0f] border border-[rgba(255,255,255,0.06)]
-                        hover:border-[rgba(16,185,129,0.25)] hover:bg-[#111]
+                        bg-[#000] border border-[rgba(255,255,255,0.06)]
+                        hover:border-[rgba(255,255,255,0.15)] hover:bg-[#111]
                         transition-all duration-200 text-left slide-up
-                        hover:shadow-[0_4px_20px_rgba(16,185,129,0.06)]">
+                        hover:shadow-[0_4px_20px_rgba(255,255,255,0.03)]">
                       <span className="text-xl leading-none">{ex.icon}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-[12.5px] text-[#888] group-hover:text-[#ccc] 
@@ -1311,7 +1391,7 @@ export default function App() {
                         </p>
                       </div>
                       <span className="text-[9px] font-bold text-[#2a2a2a] 
-                        group-hover:text-emerald-500/60 uppercase tracking-wider 
+                        group-hover:text-white/60 uppercase tracking-wider 
                         transition-colors flex-shrink-0">
                         {ex.tag}
                       </span>
@@ -1328,8 +1408,7 @@ export default function App() {
                       <div key={idx} className="flex justify-end msg-animate">
                         <div className="max-w-[78%] md:max-w-[65%]">
                           <div className="px-4 py-3 rounded-[18px] rounded-br-[6px]
-                            bg-gradient-to-br from-[#1c2920] to-[#141a14]
-                            border border-emerald-900/30
+                            bg-[#111] border border-white/10
                             text-[13.5px] text-[#e8e8e8] leading-[1.6] font-[400]">
                             {msg.imageUrl && (
                               <div className="mb-3 rounded-xl overflow-hidden border border-white/10 shadow-lg inline-block">
@@ -1348,7 +1427,7 @@ export default function App() {
                         <ZenoxLogo size={26} />
                         <div className="flex-1 min-w-0 max-w-[78%] md:max-w-[68%]">
                           <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-[11px] font-bold text-emerald-400 tracking-wide">
+                            <span className="text-[11px] font-bold text-white tracking-wide">
                               ZENOX
                             </span>
                             <span className="text-[9px] text-[#2a2a2a] font-mono">
@@ -1401,20 +1480,14 @@ export default function App() {
                       {/* 3D rotating Z */}
                       <div className="w-8 h-8 relative flex items-center justify-center flex-shrink-0">
                         <div className="absolute inset-0 rounded-xl 
-                          bg-gradient-to-br from-emerald-500/20 to-green-600/10 
+                          bg-white/5 
                           animate-[breathe_2s_ease-in-out_infinite]" />
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                           className="animate-[spin3d_3s_linear_infinite]"
                           style={{transformOrigin:'center', transform:'perspective(100px)'}}>
                           <path d="M4 5h16M4 5l16 14M4 19h16"
-                            stroke="url(#thinkGrad)" strokeWidth="2.5"
+                            stroke="#fff" strokeWidth="2.5"
                             strokeLinecap="round" strokeLinejoin="round"/>
-                          <defs>
-                            <linearGradient id="thinkGrad" x1="4" y1="5" x2="20" y2="19">
-                              <stop offset="0%" stopColor="#10b981"/>
-                              <stop offset="100%" stopColor="#34d399"/>
-                            </linearGradient>
-                          </defs>
                         </svg>
                       </div>
                       
@@ -1426,7 +1499,7 @@ export default function App() {
                             {[0,200,400].map(delay => (
                               <div key={delay}
                                 style={{animationDelay:`${delay}ms`}}
-                                className="w-1 h-1 rounded-full bg-emerald-500 
+                                className="w-1 h-1 rounded-full bg-white 
                                   animate-[typing_1.2s_ease-in-out_infinite]" />
                             ))}
                           </div>
@@ -1446,7 +1519,7 @@ export default function App() {
                       <ZenoxLogo size={26} />
                       <div className="flex-1 min-w-0 max-w-[78%] md:max-w-[68%]">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-[11px] font-bold text-emerald-400 tracking-wide">
+                          <span className="text-[11px] font-bold text-white tracking-wide">
                             ZENOX
                           </span>
                           <span className="text-[9px] text-[#2a2a2a] font-mono">
@@ -1458,7 +1531,7 @@ export default function App() {
                           text-[13.5px] text-[#d8d8d8] leading-[1.7] font-[400]
                           markdown-body">
                           {renderMarkdown(streamingContent)}
-                          <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse align-middle" />
+                          <span className="inline-block w-2 h-4 ml-1 bg-white animate-pulse align-middle" />
                         </div>
                       </div>
                     </div>
@@ -1474,7 +1547,7 @@ export default function App() {
                           handleSendWithMessage(s);
                         }}
                         className="px-3 py-1.5 text-xs border border-[#2a2a2a] rounded-full
-                          bg-[#111] text-[#888] hover:text-white hover:border-green-500/50
+                          bg-[#111] text-[#888] hover:text-white hover:border-white/50
                           hover:bg-[#1a1a1a] transition-all"
                       >
                         {s}
@@ -1515,10 +1588,10 @@ export default function App() {
             />
 
             {lastProject && agentMode && (
-              <div className="mx-4 mb-4 p-4 bg-[#0d1a0d] border border-emerald-500/30 rounded-2xl">
+              <div className="mx-4 mb-4 p-4 bg-[#0a0a0a] border border-white/10 rounded-2xl">
                 <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle2 size={14} className="text-emerald-400" />
-                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                  <CheckCircle2 size={14} className="text-white" />
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">
                     Project Complete
                   </span>
                 </div>
@@ -1535,8 +1608,8 @@ export default function App() {
                   {lastProject.deploy_url && lastProject.deploy_url.startsWith('http') && (
                     <a href={lastProject.deploy_url} target="_blank" rel="noreferrer"
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 
-                        bg-emerald-900/40 border border-emerald-700/50 text-emerald-300 
-                        hover:bg-emerald-900/60 rounded-lg transition-all font-semibold">
+                        bg-white/10 border border-white/20 text-white 
+                        hover:bg-white/20 rounded-lg transition-all font-semibold">
                       🚀 View Live Site
                     </a>
                   )}
@@ -1579,7 +1652,7 @@ export default function App() {
                 <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                   msgStatus === 'sending' ? 'bg-yellow-400 animate-pulse' :
                   msgStatus === 'thinking' ? 'bg-blue-400 animate-ping' :
-                  'bg-emerald-400 animate-pulse'
+                  'bg-white animate-pulse'
                 }`} />
                 <span className="text-[10px] text-[#444]">
                   {msgStatus === 'sending' ? 'Sending...' :
@@ -1593,7 +1666,7 @@ export default function App() {
             <div className={`flex items-end gap-2 px-3 py-3 rounded-[16px]
               bg-[#111] border transition-all duration-200 ${
               inputValue.length > 0 
-                ? 'border-emerald-500/25 shadow-[0_0_0_3px_rgba(16,185,129,0.06)]' 
+                ? 'border-white/20 shadow-[0_0_0_3px_rgba(255,255,255,0.05)]' 
                 : 'border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.12)]'
             }`}>
               
@@ -1620,7 +1693,7 @@ export default function App() {
                 <button onClick={() => setAgentMode(!agentMode)}
                   className={`p-1.5 rounded-lg transition-all ml-1 border ${
                   agentMode 
-                    ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' 
+                    ? 'text-white border-white/30 bg-white/10' 
                     : 'text-[#2a2a2a] border-transparent hover:text-[#888] hover:bg-[rgba(255,255,255,0.05)]'
                 }`}>
                   <Terminal size={15} className={agentMode ? "animate-pulse" : ""}/>
@@ -1659,7 +1732,11 @@ export default function App() {
                       : "Message Zenox..."
                 }
                 rows={1}
-                disabled={!agentMode && isLoading}
+                disabled={
+                  isLoading || 
+                  backendStatus === 'offline' || 
+                  backendStatus === 'checking'
+                }
                 style={{ resize: 'none', maxHeight: '120px' }}
                 className="flex-1 bg-transparent text-[13.5px] text-[#e0e0e0] 
                   placeholder:text-[#2d2d2d] outline-none leading-[1.5] 
@@ -1690,11 +1767,15 @@ export default function App() {
                   </button>
                 ) : (
                   <button onClick={() => handleSendWithMessage(inputValue)}
-                    disabled={(!inputValue.trim() && !selectedImage && !uploadedFile) || backendStatus === 'offline'}
+                    disabled={
+                      isLoading || 
+                      backendStatus === 'offline' || 
+                      backendStatus === 'checking'
+                    }
                     className={`w-8 h-8 flex items-center justify-center rounded-[10px]
                       transition-all duration-200 active:scale-95 ${
                       (inputValue.trim() || selectedImage || uploadedFile) && backendStatus !== 'offline'
-                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_2px_8px_rgba(16,185,129,0.3)]'
+                        ? 'bg-white hover:bg-gray-200 text-black shadow-[0_2px_8px_rgba(255,255,255,0.2)]'
                         : 'bg-[rgba(255,255,255,0.04)] text-[#2a2a2a] cursor-not-allowed'
                     }`}>
                     <ArrowUp size={15} strokeWidth={2.5}/>
@@ -1887,7 +1968,7 @@ export default function App() {
                       Object.entries(apiKeysStatus).map(([keyName, statusStr]) => (
                         <div key={keyName} className="flex justify-between items-center text-xs">
                           <span className="font-mono text-[#888]">{keyName}</span>
-                          <span className={`font-medium ${String(statusStr).includes('✅') ? 'text-emerald-400' : 'text-red-400'}`}>
+                          <span className={`font-medium ${String(statusStr).includes('✅') ? 'text-white' : 'text-red-400'}`}>
                             {String(statusStr)}
                           </span>
                         </div>
@@ -1955,11 +2036,11 @@ export default function App() {
                 <h3 className="text-[10px] font-bold text-[#555] uppercase tracking-widest mb-4 flex items-center gap-2"><div className="w-1 h-1 bg-[#555] rounded-full"></div> System INFO</h3>
                 
                 <div className="glass-panel p-5 rounded-2xl border-white/5 mb-6 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none group-hover:bg-green-500/10 transition-colors duration-1000"></div>
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none group-hover:bg-white/10 transition-colors duration-1000"></div>
                   <div className="text-lg font-black font-sans text-transparent bg-clip-text bg-gradient-to-r from-white to-[#888] tracking-tight block mb-1">Zenox</div>
                   <div className="text-[10px] text-[#666] font-mono tracking-widest uppercase block mb-4">v4.1.0-alpha</div>
-                  <div className="text-[10px] text-green-400 font-bold tracking-widest uppercase flex items-center gap-2 mt-1">
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" /> Neural Link Active
+                  <div className="text-[10px] text-white font-bold tracking-widest uppercase flex items-center gap-2 mt-1">
+                    <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse shadow-[0_0_10px_rgba(255,255,255,0.5)]" /> Neural Link Active
                   </div>
                 </div>
                 

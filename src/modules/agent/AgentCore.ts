@@ -7,6 +7,7 @@ import { TaskManager, TaskRecord } from './TaskManager';
 import { LifeGraph } from './LifeGraph';
 
 export class AgentCore {
+  private static instance: AgentCore;
   private github: GithubManager;
   private sandbox: SandboxManager;
   private render: RenderManager;
@@ -16,7 +17,7 @@ export class AgentCore {
   private lifeGraph: LifeGraph;
   private isProcessing = false;
 
-  constructor() {
+  private constructor() {
     this.github = GithubManager.getInstance();
     this.sandbox = SandboxManager.getInstance();
     this.render = RenderManager.getInstance();
@@ -26,12 +27,29 @@ export class AgentCore {
     this.lifeGraph = LifeGraph.getInstance();
   }
 
+  public static getInstance(): AgentCore {
+    if (!AgentCore.instance) {
+      AgentCore.instance = new AgentCore();
+    }
+    return AgentCore.instance;
+  }
+
   /**
    * Submit a task to the agent's queue.
    */
-  public async submitTask(userId: string, taskPrompt: string): Promise<string> {
-    const taskId = await this.taskManager.enqueueTask(userId, taskPrompt);
-    this.processQueue();
+  public async submitTask(userId: string, prompt: string): Promise<string> {
+    /**
+     * NOTE: submitTask stores the task locally for memory/tracking.
+     * The actual execution happens via POST /api/agent/run in App.tsx.
+     * This method does NOT trigger executeTaskFromQueue for agent mode tasks.
+     */
+    // Generate a task ID that matches what the backend will use
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    
+    // Store in memory for local tracking
+    await this.taskManager.enqueueTask(userId, prompt);
+    await this.memory.addMemoryEntry(userId, `Started task: ${prompt.slice(0,50)}`);
+    
     return taskId;
   }
 
@@ -69,8 +87,12 @@ export class AgentCore {
   }
 
   /**
-   * Phase 1 & 2 & 3: Executes an autonomous task orchestrating Memory, LLM, Sandbox, GitHub, and Render 
-   * in isolated modules without exposing complexity to the user / client.
+   * @deprecated This method is the OLD blocking pipeline.
+   * The primary execution path is now POST /api/agent/run
+   * which runs _run_agent_background server-side.
+   * This method only runs if submitTask() is called directly
+   * outside of the App.tsx fire-and-forget flow.
+   * Do not add new logic here.
    */
   private async executeTaskFromQueue(task: TaskRecord) {
     try {

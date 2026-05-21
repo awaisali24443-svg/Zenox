@@ -15,3 +15,6 @@ firebase-applet-config.json
 firebase-blueprint.json
 *.json.bak
 service-account*.json
+patch*.py
+patch*.cjs
+*.patch
