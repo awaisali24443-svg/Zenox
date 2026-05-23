@@ -327,667 +327,1074 @@ export default function App() {
     setMsgStatus('idle');
   };
 
-  const toggleVoiceInput = () => setIsListening(!isListening);
   const removeImage = () => setImagePreview(null);
-  
   const copyMessage = (text: string, index: number) => {
     navigator.clipboard.writeText(text);
     setCopiedIndex(index);
     showToast('Copied to clipboard');
     setTimeout(() => setCopiedIndex(null), 2000);
   };
-
   const setSuggestions = (arr: any) => {};
-
   const filteredConversations = conversations.filter(c => 
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
   const getTimeAgo = (timestamp: number) => {
-    const diff = Math.floor((Date.now() - timestamp) / 60000); // in minutes
+    const diff = Math.floor((Date.now() - timestamp) / 60000);
     if (diff < 1) return 'Just now';
     if (diff < 60) return `${diff}m ago`;
     if (diff < 1440) return `${Math.floor(diff/60)}h ago`;
     return `${Math.floor(diff/1440)}d ago`;
   };
-
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
-
   const renderMarkdown = (content: string) => {
     return (
-      <div className="prose prose-invert prose-p:my-2 prose-pre:bg-[#0a0a0a] prose-pre:border prose-pre:border-[#2a2a2a] max-w-none text-[#ccc] text-[13.5px]">
+      <div className="prose prose-invert max-w-none text-[#ccc] text-[13.5px]">
         <Markdown>{content}</Markdown>
       </div>
     );
   };
 
+  // ── Image upload handler (was missing)
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showToast('Max 5MB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  // ── File upload handler (was missing)
+  const [fileContent, setFileContent] = React.useState<{name:string;text:string}|null>(null);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 200 * 1024) { showToast('Max 200KB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = ev => setFileContent({ name: file.name, text: ev.target?.result as string });
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // ── Real voice input (was fake)
+  const recognitionRef = useRef<any>(null);
+  const realToggleVoice = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { showToast('Voice not supported', 'error'); return; }
+    if (isListening) { recognitionRef.current?.stop(); setIsListening(false); return; }
+    const r = new SR();
+    r.continuous = false; r.interimResults = true; r.lang = 'en-US';
+    r.onstart = () => setIsListening(true);
+    r.onresult = (e: any) => {
+      let t = '';
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      setInputValue(t);
+    };
+    r.onend = () => { setIsListening(false); inputRef.current?.focus(); };
+    r.onerror = () => { setIsListening(false); showToast('Mic error', 'error'); };
+    recognitionRef.current = r; r.start();
+  };
+
+  // ── Export conversation
+  const exportConversation = () => {
+    if (!messages.length) return;
+    const text = messages.map(m =>
+      `[${formatTime(m.timestamp)}] ${m.role === 'user' ? 'You' : 'Zenox'}:\n${m.content}`
+    ).join('\n\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `zenox-${Date.now()}.txt`; a.click();
+    URL.revokeObjectURL(url);
+    showToast('Exported');
+  };
+
+  // Logo component (inline)
+  const Logo = ({ size = 32 }: { size?: number }) => (
+    <div style={{width:size,height:size}} className="relative flex-shrink-0">
+      <div style={{
+          width:size, height:size, borderRadius:'28%',
+          background:'linear-gradient(135deg,#1a1a1d,#0d0d0f)',
+          border:'1px solid rgba(16,185,129,0.25)',
+          boxShadow:'0 0 20px rgba(16,185,129,0.08)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          flexShrink:0, position:'relative'
+        }}
+        className="flex items-center justify-center">
+        <svg width={size*0.52} height={size*0.52} viewBox="0 0 24 24" fill="none">
+          <path d="M4 5h16M4 5l16 14M4 19h16" stroke="url(#lg)"
+            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <defs>
+            <linearGradient id="lg" x1="4" y1="5" x2="20" y2="19">
+              <stop offset="0%" stopColor="#10b981"/>
+              <stop offset="100%" stopColor="#34d399"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div style={{
+          position:'absolute', bottom:'-2px', right:'-2px',
+          width:size*0.22, height:size*0.22,
+          borderRadius:'50%', background:'#10b981',
+          border:`2px solid #09090b`,
+          boxShadow:'0 0 6px rgba(16,185,129,0.8)'
+        }}/>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex h-screen bg-[#080808] text-[#F0F0F0] overflow-hidden font-sans antialiased">
-      <SidebarCmp 
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        startNewChat={startNewChat}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        filteredConversations={filteredConversations}
-        currentConversationId={currentConversationId}
-        loadConversation={loadConversation}
-        deleteConversation={deleteConversation}
-        getTimeAgo={getTimeAgo}
-        setSettingsOpen={setSettingsOpen}
-      />
-      
-      <div className="flex-1 flex flex-col min-w-0 relative h-full">
-        <header className="h-[52px] bg-[#0a0a0a] border-b 
-          border-[rgba(255,255,255,0.05)] flex items-center 
-          justify-between px-4 flex-shrink-0">
-          
-          <div className="flex items-center gap-2.5">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 rounded-[8px] text-[#444] 
-                hover:text-[#888] hover:bg-[rgba(255,255,255,0.05)] transition-all">
-              <Menu size={16}/>
+    <div style={{
+      display:'flex',
+      height:'100dvh',
+      overflow:'hidden',
+      background:'var(--bg)',
+      color:'var(--text1)',
+      fontFamily:'-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif'
+    }}>
+
+      {/* Hidden inputs */}
+      <input ref={imageInputRef} type="file" style={{display:'none'}}
+        accept="image/*" onChange={handleImageSelect}/>
+      <input ref={fileInputRef} type="file" style={{display:'none'}}
+        accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css"
+        onChange={handleFileSelect}/>
+
+      {/* ────────────────────── SIDEBAR ────────────────────── */}
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position:'fixed', inset:0, zIndex:30,
+            background:'rgba(0,0,0,0.6)',
+            backdropFilter:'blur(4px)'
+          }}
+          className="lg:hidden fade-in"
+        />
+      )}
+
+      <aside style={{
+        position:'fixed', top:0, left:0, bottom:0, zIndex:40,
+        width:260,
+        display:'flex', flexDirection:'column',
+        background:'#0c0c0f',
+        borderRight:'1px solid var(--border)',
+        transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition:'transform 0.28s cubic-bezier(0.4,0,0.2,1)'
+      }} className="lg:static lg:translate-x-0">
+
+        {/* Logo header */}
+        <div style={{
+          display:'flex', alignItems:'center', justifyContent:'space-between',
+          padding:'16px 16px',
+          borderBottom:'1px solid var(--border)',
+          flexShrink:0
+        }}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <Logo size={30}/>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:'var(--text1)',letterSpacing:'-0.3px'}}>
+                Zenox
+              </div>
+              <div style={{fontSize:9,color:'var(--text4)',textTransform:'uppercase',letterSpacing:'0.12em'}}>
+                by awais
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden"
+            style={{
+              padding:'6px', borderRadius:8, border:'none',
+              background:'transparent', color:'var(--text3)',
+              cursor:'pointer', display:'flex'
+            }}>
+            <X size={15}/>
+          </button>
+        </div>
+
+        {/* New Chat */}
+        <div style={{padding:'10px 10px', borderBottom:'1px solid var(--border)', flexShrink:0}}>
+          <button
+            onClick={() => { startNewChat(); if(window.innerWidth<1024) setSidebarOpen(false); }}
+            style={{
+              width:'100%', display:'flex', alignItems:'center',
+              justifyContent:'center', gap:8,
+              padding:'10px 0', borderRadius:12,
+              background:'var(--green)',
+              color:'#000', fontWeight:700, fontSize:13,
+              border:'none', cursor:'pointer',
+              boxShadow:'0 2px 14px rgba(16,185,129,0.25)',
+              transition:'all 0.15s'
+            }}
+            onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.1)'}
+            onMouseLeave={e=>e.currentTarget.style.filter=''}
+          >
+            <Plus size={15}/> New Chat
+          </button>
+        </div>
+
+        {/* Search */}
+        <div style={{padding:'8px 10px', flexShrink:0}}>
+          <div style={{
+            display:'flex', alignItems:'center', gap:8,
+            padding:'8px 12px', borderRadius:10,
+            background:'var(--card)', border:'1px solid var(--border)'
+          }}>
+            <Search size={12} style={{color:'var(--text4)',flexShrink:0}}/>
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search chats..."
+              style={{
+                flex:1, background:'transparent', border:'none',
+                outline:'none', fontSize:12, color:'var(--text2)',
+                minWidth:0
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Conversation list */}
+        <div style={{flex:1, overflowY:'auto', padding:'4px 8px'}}>
+          {filteredConversations.length === 0 ? (
+            <div style={{
+              display:'flex', flexDirection:'column', alignItems:'center',
+              justifyContent:'center', padding:'40px 0', gap:8
+            }}>
+              <MessageSquare size={18} style={{color:'var(--text4)'}}/>
+              <span style={{fontSize:11,color:'var(--text4)'}}>No chats yet</span>
+            </div>
+          ) : filteredConversations.map((conv: any) => {
+            const active = currentConversationId === conv.id;
+            return (
+              <button
+                key={conv.id}
+                onClick={() => { loadConversation(conv.id); if(window.innerWidth<1024) setSidebarOpen(false); }}
+                style={{
+                  width:'100%', display:'flex', alignItems:'center',
+                  gap:10, padding:'9px 10px',
+                  borderRadius:10, textAlign:'left',
+                  marginBottom:2, border:'none', cursor:'pointer',
+                  background: active ? 'rgba(16,185,129,0.08)' : 'transparent',
+                  outline: active ? '1px solid rgba(16,185,129,0.2)' : '1px solid transparent',
+                  transition:'all 0.15s',
+                  position:'relative'
+                }}
+                className="group w-full flex items-center justify-between"
+                onMouseEnter={e=>{ if(!active) e.currentTarget.style.background='var(--card)'; }}
+                onMouseLeave={e=>{ if(!active) e.currentTarget.style.background='transparent'; }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                  <MessageSquare size={12} style={{
+                    color: active ? 'var(--green)' : 'var(--text4)',
+                    flexShrink:0
+                  }}/>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{
+                      fontSize:12, fontWeight:500, color: active ? 'var(--text1)' : 'var(--text2)',
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'
+                    }}>
+                      {conv.title}
+                    </div>
+                    <div style={{fontSize:9,color:'var(--text4)',marginTop:2}}>
+                      {getTimeAgo(conv.createdAt)}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  onClick={e=>{ e.stopPropagation(); deleteConversation(conv.id); }}
+                  style={{
+                    padding:'2px', border:'none', background:'transparent',
+                    color:'var(--text4)', cursor:'pointer', borderRadius:4,
+                    transition:'all 0.15s', flexShrink:0
+                  }}
+                  className="opacity-0 group-hover:opacity-100 hover:text-red-400"
+                >
+                  <X size={11}/>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* User / Settings */}
+        <div style={{padding:'8px', borderTop:'1px solid var(--border)', flexShrink:0}}>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            style={{
+              width:'100%', display:'flex', alignItems:'center', gap:10,
+              padding:'8px 10px', borderRadius:10,
+              border:'none', background:'transparent', cursor:'pointer',
+              transition:'all 0.15s'
+            }}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--card)'}
+            onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+          >
+            <div style={{
+              width:32, height:32, borderRadius:'50%',
+              background:'linear-gradient(135deg,#059669,#0d9488)',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              color:'#fff', fontSize:13, fontWeight:700, flexShrink:0
+            }}>A</div>
+            <div style={{flex:1, textAlign:'left', minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:600,color:'var(--text1)'}}>Awais</div>
+              <div style={{fontSize:9,color:'var(--text4)'}}>
+                {backendStatus === 'online'
+                  ? <span style={{color:'var(--green)'}}>● Online</span>
+                  : <span style={{color:'var(--red)'}}>● Offline</span>}
+              </div>
+            </div>
+            <Settings size={13} style={{color:'var(--text4)'}}/>
+          </button>
+        </div>
+      </aside>
+
+      {/* ────────────────────── MAIN ────────────────────── */}
+      <div style={{
+        flex:1, display:'flex', flexDirection:'column',
+        minWidth:0, overflow:'hidden',
+        marginLeft:0
+      }} className="lg:ml-[260px]">  
+
+        {/* Header */}
+        <header style={{
+          height:52, display:'flex', alignItems:'center',
+          justifyContent:'space-between', padding:'0 16px',
+          background:'#0c0c0f',
+          borderBottom:'1px solid var(--border)',
+          flexShrink:0
+        }}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              style={{
+                padding:'7px', borderRadius:8, border:'none',
+                background:'transparent', color:'var(--text3)',
+                cursor:'pointer', display:'flex'
+              }}
+            >
+              <Menu size={17}/>
             </button>
-            
-            {/* Backend status */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 
-              rounded-full text-[9px] font-bold uppercase tracking-wider
-              border transition-all ${
-              backendStatus === 'online'
-                ? 'bg-emerald-500/8 border-emerald-500/20 text-emerald-400'
-                : backendStatus === 'offline'
-                ? 'bg-red-500/8 border-red-500/20 text-red-400'
-                : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)] text-[#444]'
-            }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${
-                backendStatus==='online' ? 'bg-emerald-400 animate-pulse' :
-                backendStatus==='offline' ? 'bg-red-400' : 'bg-[#333] animate-pulse'
-              }`}/>
-              <span className="hidden sm:inline">
-                {backendStatus==='online' ? 'Online' : backendStatus==='offline' ? 'Offline' : '...'}
+
+            {/* Status pill */}
+            <div style={{
+              display:'flex', alignItems:'center', gap:6,
+              padding:'4px 10px', borderRadius:99,
+              fontSize:9, fontWeight:700,
+              letterSpacing:'0.1em', textTransform:'uppercase',
+              background: backendStatus==='online' ? 'rgba(16,185,129,0.1)' :
+                          backendStatus==='offline' ? 'rgba(239,68,68,0.1)' : 'var(--card)',
+              border: `1px solid ${backendStatus==='online' ? 'rgba(16,185,129,0.3)' :
+                      backendStatus==='offline' ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
+              color: backendStatus==='online' ? '#10b981' :
+                     backendStatus==='offline' ? '#ef4444' : 'var(--text3)'
+            }}>
+              <div style={{
+                width:6, height:6, borderRadius:'50%',
+                background: backendStatus==='online' ? '#10b981' :
+                            backendStatus==='offline' ? '#ef4444' : 'var(--text4)',
+                animation: backendStatus==='checking' ? 'pulse 1.5s infinite' : 'none'
+              }}/>
+              <span style={{display:'none'}} className="sm:inline">
+                {backendStatus==='online' ? 'Online' :
+                 backendStatus==='offline' ? 'Offline' : '...'}
               </span>
             </div>
-            
-            {/* Agent mode toggle */}
-            <button onClick={() => setAgentMode(!agentMode)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full
-                text-[10px] font-bold border transition-all ${
-                agentMode
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)] text-[#444] hover:text-[#888]'
-              }`}>
-              <span>{agentMode ? '🤖' : '💬'}</span>
-              {agentMode ? 'Agent' : 'Chat'}
+
+            {/* Mode toggle */}
+            <button
+              onClick={() => setAgentMode(!agentMode)}
+              style={{
+                display:'flex', alignItems:'center', gap:6,
+                padding:'4px 12px', borderRadius:99,
+                fontSize:10, fontWeight:700, border:'none', cursor:'pointer',
+                background: agentMode ? 'rgba(16,185,129,0.1)' : 'var(--card)',
+                color: agentMode ? '#10b981' : 'var(--text3)',
+                outline: `1px solid ${agentMode ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
+                transition:'all 0.15s'
+              }}
+            >
+              <span role="img" aria-label="mode">{agentMode ? '🤖' : '💬'}</span>
+              {agentMode ? ' Agent' : ' Chat'}
             </button>
           </div>
-          
-          <button onClick={() => setRightPanelOpen(!rightPanelOpen)}
-            className={`p-2 rounded-[8px] transition-all ${
-            rightPanelOpen ? 'bg-[rgba(255,255,255,0.08)] text-[#888]' : 'text-[#2a2a2a] hover:text-[#666]'
-          }`}>
-            <Layout size={16}/>
+
+          <button
+            onClick={() => messages.length > 0 && exportConversation()}
+            title="Export conversation"
+            style={{
+              padding:'7px', borderRadius:8, border:'none',
+              background:'transparent',
+              color: messages.length > 0 ? 'var(--text3)' : 'var(--text4)',
+              cursor: messages.length > 0 ? 'pointer' : 'default', display:'flex'
+            }}
+          >
+            <Download size={15}/>
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 md:px-12 w-full mx-auto max-w-4xl py-6 flex flex-col gap-6 relative">
-          {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center
-              px-6 py-12 fade-in">
-              <div className="relative mb-8">
-                <div className="absolute inset-0 bg-emerald-500/5 blur-3xl rounded-full scale-150"/>
-                <ZenoxLogo size={56}/>
-              </div>
-              <h1 className="text-[28px] font-black text-white tracking-[-0.6px] mb-3 text-center">
-                What should I build?
-              </h1>
-              <p className="text-[13px] text-[#3a3a3a] mb-10 text-center max-w-[320px] leading-relaxed">
-                {agentMode 
-                  ? 'Agent mode on — I will plan, code, test, and deploy for you.'
-                  : 'Ask me anything. I think, search, and answer clearly.'}
-              </p>
-              {backendStatus === 'offline' && (
-                <div className="w-full max-w-md mb-6 flex items-start gap-3 p-4
-                  bg-red-500/5 border border-red-500/15 rounded-[14px]">
-                  <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5"/>
-                  <div>
-                    <p className="text-[12px] font-semibold text-red-300 mb-0.5">Backend Offline</p>
-                    <p className="text-[11px] text-red-400/70 leading-relaxed">
-                      Set <code className="bg-red-900/30 px-1 rounded font-mono">VITE_API_URL</code> in 
-                      your environment variables.
-                    </p>
-                  </div>
+        {/* ──── Messages area ──── */}
+        <div style={{flex:1, overflowY:'auto', padding:'0 16px', position: 'relative'}}>
+          <div style={{maxWidth:720, margin:'0 auto', padding:'24px 0'}}>
+
+            {messages.length === 0 ? (
+              /* Welcome screen */
+              <div style={{
+                minHeight:'calc(100dvh - 52px - 120px)',
+                display:'flex', flexDirection:'column',
+                alignItems:'center', justifyContent:'center',
+                padding:'24px 0', gap:0
+              }} className="fade-in">
+
+                {/* Logo */}
+                <div style={{position:'relative',marginBottom:24}}>
+                  <div style={{
+                    position:'absolute', inset:0,
+                    background:'radial-gradient(circle,rgba(16,185,129,0.15) 0%,transparent 70%)',
+                    transform:'scale(3)', filter:'blur(20px)',
+                    pointerEvents:'none'
+                  }}/>
+                  <Logo size={52}/>
                 </div>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-[440px]">
-                {[
-                  {e:'⚡',t:'Build a React dashboard',h:'With Tailwind + live data'},
-                  {e:'🐍',t:'Write a Python scraper',h:'With rate limiting'},
-                  {e:'🌐',t:'Create a landing page',h:'HTML + CSS + animations'},
-                  {e:'🔍',t:'Research any topic',h:'With web search enabled'},
-                ].map((ex,i) => (
-                  <button key={i}
-                    style={{animationDelay:`${i*60}ms`}}
-                    onClick={() => { if(backendStatus!=='offline') handleSendWithMessage(ex.t); }}
-                    className="group flex items-start gap-3 p-4 rounded-[14px] text-left
-                      bg-[#111] border border-[rgba(255,255,255,0.06)]
-                      hover:border-[rgba(16,185,129,0.2)] hover:bg-[#141414]
-                      transition-all fade-up">
-                    <span className="text-xl leading-none flex-shrink-0">{ex.e}</span>
-                    <div className="min-w-0">
-                      <p className="text-[12.5px] text-[#777] group-hover:text-[#ccc] 
-                        font-medium transition-colors leading-snug">
-                        {ex.t}
-                      </p>
-                      <p className="text-[10px] text-[#2a2a2a] mt-0.5 group-hover:text-[#3a3a3a]
-                        transition-colors">
-                        {ex.h}
-                      </p>
+
+                <h1 style={{
+                  fontSize:28, fontWeight:900, color:'var(--text1)',
+                  letterSpacing:'-0.6px', marginBottom:10, textAlign:'center'
+                }}>
+                  {agentMode ? 'What should I build?' : 'How can I help?'}
+                </h1>
+
+                <p style={{
+                  fontSize:13, color:'var(--text3)',
+                  textAlign:'center', marginBottom:36,
+                  maxWidth:300, lineHeight:1.6
+                }}>
+                  {agentMode
+                    ? 'I plan, code, test and deploy your idea autonomously.'
+                    : 'Ask anything. I think carefully and answer clearly.'}
+                </p>
+
+                {/* Offline warning */}
+                {backendStatus === 'offline' && (
+                  <div style={{
+                    display:'flex', gap:12, padding:'14px 16px',
+                    background:'var(--red-bg)', borderRadius:14,
+                    border:'1px solid var(--red-bd)',
+                    marginBottom:24, width:'100%', maxWidth:420
+                  }}>
+                    <AlertCircle size={14} style={{color:'var(--red)',flexShrink:0,marginTop:1}}/>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:600,color:'#fca5a5',marginBottom:3}}>
+                        Backend Offline
+                      </div>
+                      <div style={{fontSize:11,color:'rgba(252,165,165,0.7)',lineHeight:1.5}}>
+                        Set <code style={{background:'rgba(239,68,68,0.15)',padding:'1px 5px',borderRadius:4,fontFamily:'monospace'}}>VITE_API_URL</code> to your backend URL.
+                      </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Example cards */}
+                <div style={{
+                  display:'grid',
+                  gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',
+                  gap:10, width:'100%', maxWidth:440
+                }}>
+                  {[
+                    {e:'⚡', t:'Build a React dashboard',   h:'Tailwind + live data'},
+                    {e:'🐍', t:'Write a Python scraper',    h:'With rate limiting'},
+                    {e:'🌐', t:'Create a landing page',     h:'HTML + CSS + animations'},
+                    {e:'🔍', t:'Research any topic',        h:'Web search enabled'},
+                  ].map((ex, i) => (
+                    <button key={i}
+                      onClick={() => backendStatus !== 'offline' && handleSendWithMessage(ex.t)}
+                      className="fade-up"
+                      style={{
+                        animationDelay:`${i*60}ms`,
+                        display:'flex', alignItems:'flex-start', gap:12,
+                        padding:'14px', borderRadius:14, textAlign:'left',
+                        background:'var(--card)',
+                        border:'1px solid var(--border)',
+                        cursor: backendStatus === 'offline' ? 'not-allowed' : 'pointer',
+                        transition:'all 0.15s'
+                      }}
+                      onMouseEnter={e=>{
+                        e.currentTarget.style.borderColor='rgba(16,185,129,0.25)';
+                        e.currentTarget.style.background='var(--hover)';
+                      }}
+                      onMouseLeave={e=>{
+                        e.currentTarget.style.borderColor='var(--border)';
+                        e.currentTarget.style.background='var(--card)';
+                      }}
+                    >
+                      <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>{ex.e}</span>
+                      <div style={{minWidth:0}}>
+                        <div style={{
+                          fontSize:12.5, fontWeight:500, color:'var(--text2)',
+                          lineHeight:1.3, marginBottom:3
+                        }}>{ex.t}</div>
+                        <div style={{fontSize:10,color:'var(--text4)'}}>{ex.h}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+            ) : (
+              /* Messages */
+              <div style={{display:'flex',flexDirection:'column',gap:20}}>
+                {messages.map((msg, i) => (
+                  <div key={i}
+                    className="fade-up"
+                    style={{display:'flex', justifyContent: msg.role==='user' ? 'flex-end' : 'flex-start'}}>
+
+                    {msg.role !== 'user' && (
+                      <div style={{marginRight:10,marginTop:4,flexShrink:0}}>
+                        <Logo size={26}/>
+                      </div>
+                    )}
+
+                    <div style={{
+                      maxWidth: msg.role==='user' ? '78%' : '82%',
+                      minWidth:0
+                    }}>
+                      {msg.role !== 'user' && (
+                        <div style={{
+                          display:'flex', alignItems:'center', gap:8, marginBottom:6
+                        }}>
+                          <span style={{
+                            fontSize:10, fontWeight:700, color:'var(--green)',
+                            letterSpacing:'0.08em', textTransform:'uppercase'
+                          }}>Zenox</span>
+                          <span style={{
+                            fontSize:9, color:'var(--text4)', fontFamily:'monospace'
+                          }}>{backendModel}</span>
+                        </div>
+                      )}
+
+                      <div style={{
+                        padding:'12px 16px',
+                        borderRadius: msg.role==='user'
+                          ? '18px 18px 5px 18px'
+                          : '5px 18px 18px 18px',
+                        background: msg.role==='user'
+                          ? 'linear-gradient(135deg,#1a2e24,#131e18)'
+                          : 'var(--card)',
+                        border: msg.role==='user'
+                          ? '1px solid rgba(16,185,129,0.15)'
+                          : '1px solid var(--border)',
+                        fontSize:13.5, lineHeight:1.7,
+                        color: msg.role==='system' ? 'var(--red)' : 'var(--text2)'
+                      }}>
+                        {msg.role === 'user'
+                          ? <span style={{color:'var(--text1)'}}>{msg.content}</span>
+                          : msg.role === 'system'
+                          ? <span style={{fontFamily:'monospace',fontSize:12}}>{msg.content}</span>
+                          : <div className="prose"><Markdown>{msg.content}</Markdown></div>
+                        }
+                      </div>
+
+                      <div style={{
+                        display:'flex', alignItems:'center', gap:4,
+                        marginTop:5,
+                        justifyContent: msg.role==='user' ? 'flex-end' : 'flex-start'
+                      }}>
+                        <span style={{fontSize:9,color:'var(--text4)'}}>{formatTime(msg.timestamp)}</span>
+                        {msg.role !== 'user' && (
+                          <button
+                            onClick={() => copyMessage(msg.content, i)}
+                            style={{
+                              display:'flex', alignItems:'center', gap:4,
+                              padding:'2px 8px', borderRadius:6,
+                              border:'none', background:'transparent',
+                              color:'var(--text4)', cursor:'pointer',
+                              fontSize:10, transition:'color 0.15s'
+                            }}
+                            onMouseEnter={e=>e.currentTarget.style.color='var(--text2)'}
+                            onMouseLeave={e=>e.currentTarget.style.color='var(--text4)'}
+                          >
+                            {copiedIndex===i ? <Check size={10}/> : <Copy size={10}/>}
+                            {copiedIndex===i ? 'Copied' : 'Copy'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Thinking indicator */}
+                {(msgStatus==='thinking'||msgStatus==='sending') && (
+                  <div style={{display:'flex',alignItems:'flex-start',gap:10}} className="fade-in">
+                    <Logo size={26}/>
+                    <div style={{
+                      padding:'14px 18px',
+                      background:'var(--card)',
+                      border:'1px solid var(--border)',
+                      borderRadius:'5px 18px 18px 18px',
+                      display:'flex', alignItems:'center', gap:10
+                    }}>
+                      <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                        <div className="dot"/>
+                        <div className="dot"/>
+                        <div className="dot"/>
+                      </div>
+                      <span style={{fontSize:11,color:'var(--text3)'}}>
+                        {msgStatus==='thinking' ? 'Thinking...' : 'Sending...'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Project result card */}
+                {lastProject && agentMode && (
+                  <div className="fade-up" style={{
+                    padding:'20px',
+                    borderRadius:18,
+                    background: lastProject.language==='research'
+                      ? 'linear-gradient(135deg,rgba(59,130,246,0.07),rgba(37,99,235,0.04))'
+                      : 'linear-gradient(135deg,rgba(16,185,129,0.07),rgba(5,150,105,0.04))',
+                    border:`1px solid ${lastProject.language==='research'
+                      ? 'rgba(59,130,246,0.25)' : 'rgba(16,185,129,0.25)'}`
+                  }}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                      <div style={{
+                        width:20,height:20,borderRadius:'50%',
+                        background:'rgba(16,185,129,0.15)',
+                        display:'flex',alignItems:'center',justifyContent:'center'
+                      }}>
+                        <Check size={11} style={{color:'var(--green)'}}/>
+                      </div>
+                      <span style={{
+                        fontSize:10,fontWeight:700,color:'var(--green)',
+                        textTransform:'uppercase',letterSpacing:'0.1em'
+                      }}>
+                        {lastProject.deploy_url ? 'Deployed' :
+                         lastProject.repo_url ? 'Saved to GitHub' : 'Complete'}
+                      </span>
+                      {lastProject.iterations > 1 && (
+                        <span style={{
+                          marginLeft:'auto',fontSize:9,
+                          color:'var(--text4)',fontFamily:'monospace'
+                        }}>
+                          {lastProject.iterations}x self-corrected
+                        </span>
+                      )}
+                    </div>
+
+                    <p style={{
+                      fontSize:13,color:'var(--text2)',
+                      marginBottom:14,fontWeight:500,
+                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'
+                    }}>
+                      {lastProject.prompt}
+                    </p>
+
+                    <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                      {lastProject.code && lastProject.language !== 'research' && (
+                        <button onClick={() => {
+                          const ext = lastProject.language==='html'?'html':
+                                      lastProject.language==='python'?'py':'js';
+                          const blob = new Blob([lastProject.code],{type:'text/plain'});
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href=url; a.download=`zenox-project.${ext}`; a.click();
+                          URL.revokeObjectURL(url);
+                          showToast('Downloaded', 'success');
+                        }} style={{
+                          flex:1, display:'flex', alignItems:'center',
+                          justifyContent:'center', gap:6,
+                          padding:'10px 20px', borderRadius:12,
+                          background:'var(--green)', color:'#000',
+                          fontWeight:700, fontSize:13, border:'none',
+                          cursor:'pointer',
+                          boxShadow:'0 2px 12px rgba(16,185,129,0.25)',
+                          transition:'all 0.15s'
+                        }}
+                        onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.1)'}
+                        onMouseLeave={e=>e.currentTarget.style.filter=''}
+                        >
+                          <Download size={14}/> Download Code
+                        </button>
+                      )}
+                      {lastProject.repo_url && (
+                        <a href={lastProject.repo_url} target="_blank" rel="noreferrer"
+                          style={{
+                            padding:'10px 16px', borderRadius:12, fontSize:12,
+                            fontWeight:500, textDecoration:'none',
+                            background:'var(--card)',
+                            border:'1px solid var(--border)',
+                            color:'var(--text2)', transition:'color 0.15s'
+                          }}
+                          onMouseEnter={e=>e.currentTarget.style.color='var(--text1)'}
+                          onMouseLeave={e=>e.currentTarget.style.color='var(--text2)'}
+                        >
+                          GitHub →
+                        </a>
+                      )}
+                    </div>
+
+                    {lastProject.language === 'research' && lastProject.code && (
+                      <div style={{marginTop:16, paddingTop:16, borderTop:'1px solid rgba(255,255,255,0.05)'}}>
+                        <p style={{fontSize:9, fontWeight:'bold', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8, color:'#888'}}>
+                          Research Report
+                        </p>
+                        <div className="prose prose-invert max-w-none text-[#ccc] text-[13.5px]" style={{maxHeight:300, overflowY:'auto'}}>
+                          <Markdown>{lastProject.code}</Markdown>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ──── Input bar ──── */}
+        <div style={{
+          padding:'10px 16px 14px',
+          background:'#0c0c0f',
+          borderTop:'1px solid var(--border)',
+          flexShrink:0
+        }}>
+          <div style={{maxWidth:720, margin:'0 auto'}}>
+
+            {/* Attachments */}
+            {(imagePreview || fileContent || isListening) && (
+              <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:8}}>
+                {imagePreview && (
+                  <div style={{
+                    display:'flex',alignItems:'center',gap:6,
+                    padding:'5px 10px', borderRadius:8,
+                    background:'var(--card)', border:'1px solid var(--border)'
+                  }}>
+                    <img src={imagePreview} style={{width:18,height:18,objectFit:'cover',borderRadius:4}}/>
+                    <span style={{fontSize:11,color:'var(--text2)'}}>Image</span>
+                    <button onClick={() => setImagePreview(null)} style={{
+                      border:'none',background:'transparent',
+                      color:'var(--text4)',cursor:'pointer',fontSize:12
+                    }}>×</button>
+                  </div>
+                )}
+                {fileContent && (
+                  <div style={{
+                    display:'flex',alignItems:'center',gap:6,
+                    padding:'5px 10px', borderRadius:8,
+                    background:'var(--card)', border:'1px solid var(--border)'
+                  }}>
+                    <FileText size={11} style={{color:'var(--green)'}}/>
+                    <span style={{fontSize:11,color:'var(--text2)',maxWidth:100,
+                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {fileContent.name}
+                    </span>
+                    <button onClick={() => setFileContent(null)} style={{
+                      border:'none',background:'transparent',
+                      color:'var(--text4)',cursor:'pointer',fontSize:12
+                    }}>×</button>
+                  </div>
+                )}
+                {isListening && (
+                  <div style={{
+                    display:'flex',alignItems:'center',gap:6,
+                    padding:'5px 12px', borderRadius:99,
+                    background:'var(--red-bg)', border:'1px solid var(--red-bd)',
+                    color:'var(--red)', fontSize:10, fontWeight:500
+                  }}>
+                    <div style={{width:6,height:6,borderRadius:'50%',
+                      background:'var(--red)',animation:'pulse 1s infinite'}}/>
+                    Listening...
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Status */}
+            {msgStatus !== 'idle' && (
+              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                <div style={{
+                  width:6, height:6, borderRadius:'50%',
+                  background: msgStatus==='sending' ? '#facc15' :
+                              msgStatus==='thinking' ? '#3b82f6' : 'var(--green)',
+                  animation:'pulse 1.2s infinite'
+                }}/>
+                <span style={{fontSize:10,color:'var(--text4)'}}>
+                  {msgStatus==='sending' ? 'Sending...' :
+                   msgStatus==='thinking' ? 'Zenox is thinking...' :
+                   'Writing response...'}
+                </span>
+              </div>
+            )}
+
+            {/* Main input */}
+            <div style={{
+              display:'flex', alignItems:'flex-end', gap:8,
+              padding:'10px 12px',
+              borderRadius:16,
+              background:'var(--card)',
+              border: inputValue.length > 0
+                ? '1px solid rgba(16,185,129,0.25)'
+                : '1px solid var(--border)',
+              boxShadow: inputValue.length > 0
+                ? '0 0 0 3px rgba(16,185,129,0.05)'
+                : 'none',
+              transition:'all 0.2s'
+            }}>
+              {/* Tool buttons */}
+              <div style={{display:'flex',gap:2,alignSelf:'flex-end',paddingBottom:2}}>
+                {[
+                  {icon:<ImageIcon size={15}/>, onClick:()=>imageInputRef.current?.click(), title:'Image', active: false},
+                  {icon:<FileText size={15}/>, onClick:()=>fileInputRef.current?.click(), title:'File', active: false},
+                  {icon: isListening ? <MicOff size={15}/> : <Mic size={15}/>,
+                   onClick: realToggleVoice, title:'Voice',
+                   active: isListening},
+                ].map((btn,i)=>(
+                  <button key={i} onClick={btn.onClick} title={btn.title}
+                    style={{
+                      padding:'6px', borderRadius:8, border:'none',
+                      background: btn.active ? 'var(--red-bg)' : 'transparent',
+                      color: btn.active ? 'var(--red)' : 'var(--text4)',
+                      cursor:'pointer', display:'flex', transition:'color 0.15s'
+                    }}
+                    onMouseEnter={e=>{ if(!btn.active) e.currentTarget.style.color='var(--text2)'; }}
+                    onMouseLeave={e=>{ if(!btn.active) e.currentTarget.style.color='var(--text4)'; }}
+                  >
+                    {btn.icon}
+                  </button>
+                ))}
+              </div>
+
+              {/* Textarea */}
+              <textarea
+                ref={inputRef}
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  backendStatus==='offline' ? 'Backend offline...' :
+                  agentMode ? 'Tell Zenox what to build...' :
+                  'Ask Zenox anything...'
+                }
+                rows={1}
+                disabled={isLoading || backendStatus==='offline' || backendStatus==='checking'}
+                style={{
+                  flex:1, resize:'none', border:'none', outline:'none',
+                  background:'transparent', fontSize:13.5,
+                  color:'var(--text1)', lineHeight:1.5,
+                  minHeight:22, maxHeight:140,
+                  fontFamily:'inherit', padding:'2px 0'
+                }}
+                onInput={e => {
+                  const t = e.target as HTMLTextAreaElement;
+                  t.style.height = 'auto';
+                  t.style.height = Math.min(t.scrollHeight, 140) + 'px';
+                }}
+              />
+
+              {/* Send/Stop */}
+              <div style={{alignSelf:'flex-end',paddingBottom:2}}>
+                {isLoading ? (
+                  <button onClick={stopGeneration} style={{
+                    width:32, height:32, borderRadius:10,
+                    border:'1px solid var(--red-bd)',
+                    background:'var(--red-bg)', color:'var(--red)',
+                    cursor:'pointer', display:'flex',
+                    alignItems:'center', justifyContent:'center'
+                  }}>
+                    <Square size={12} fill="currentColor"/>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleSendWithMessage(inputValue)}
+                    disabled={!inputValue.trim() || isLoading ||
+                              backendStatus==='offline' || backendStatus==='checking'}
+                    style={{
+                      width:32, height:32, borderRadius:10, border:'none',
+                      cursor: (inputValue.trim() && backendStatus==='online')
+                        ? 'pointer' : 'not-allowed',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      background: (inputValue.trim() && backendStatus==='online')
+                        ? 'var(--green)' : 'var(--card)',
+                      color: (inputValue.trim() && backendStatus==='online')
+                        ? '#000' : 'var(--text4)',
+                      boxShadow: (inputValue.trim() && backendStatus==='online')
+                        ? '0 2px 10px rgba(16,185,129,0.3)' : 'none',
+                      transition:'all 0.15s'
+                    }}
+                  >
+                    <ArrowUp size={15} strokeWidth={2.5}/>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Hint */}
+            <div style={{
+              display:'flex', justifyContent:'space-between',
+              marginTop:6, padding:'0 2px'
+            }}>
+              <span style={{fontSize:9,color:'var(--text4)'}}>
+                Enter to send · Shift+Enter for new line
+              </span>
+              {inputValue.length > 100 && (
+                <span style={{
+                  fontSize:9, fontFamily:'monospace',
+                  color: inputValue.length > 3000 ? 'var(--red)' : 'var(--text4)'
+                }}>
+                  {inputValue.length.toLocaleString()}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ────── SETTINGS MODAL ────── */}
+      {settingsOpen && (
+        <div
+          onClick={() => setSettingsOpen(false)}
+          style={{
+            position:'fixed', inset:0, zIndex:2000,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            padding:16, background:'rgba(0,0,0,0.75)',
+            backdropFilter:'blur(8px)'
+          }} className="fade-in">
+          <div
+            onClick={e => e.stopPropagation()}
+            className="fade-up"
+            style={{
+              width:'100%', maxWidth:360,
+              background:'var(--surface)',
+              border:'1px solid var(--border2)',
+              borderRadius:20, padding:24,
+              boxShadow:'0 25px 60px rgba(0,0,0,0.6)'
+            }}>
+
+            {/* Header */}
+            <div style={{
+              display:'flex', alignItems:'center',
+              justifyContent:'space-between', marginBottom:24
+            }}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <Logo size={26}/>
+                <span style={{fontSize:15,fontWeight:700,color:'var(--text1)'}}>
+                  Settings
+                </span>
+              </div>
+              <button onClick={() => setSettingsOpen(false)} style={{
+                padding:'6px', borderRadius:8, border:'none',
+                background:'transparent', color:'var(--text3)',
+                cursor:'pointer', display:'flex'
+              }}>
+                <X size={15}/>
+              </button>
+            </div>
+
+            {/* Mode */}
+            <div style={{marginBottom:20}}>
+              <div style={{
+                fontSize:9, fontWeight:700, color:'var(--text4)',
+                textTransform:'uppercase', letterSpacing:'0.15em', marginBottom:10
+              }}>AI Mode</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                {[{v:false,e:'💬',l:'Chat'},{v:true,e:'🤖',l:'Agent'}].map(m=>(
+                  <button key={String(m.v)} onClick={() => setAgentMode(m.v)} style={{
+                    padding:'11px', borderRadius:12, border:'none',
+                    cursor:'pointer', fontSize:13, fontWeight:600,
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                    background: agentMode===m.v ? 'var(--green-bg)' : 'var(--card)',
+                    color: agentMode===m.v ? 'var(--green)' : 'var(--text3)',
+                    outline: `1px solid ${agentMode===m.v ? 'var(--green-bd)' : 'var(--border)'}`,
+                    transition:'all 0.15s'
+                  }}>
+                    {m.e} {m.l}
                   </button>
                 ))}
               </div>
             </div>
-          ) : (
-            <>
-              {messages.map((msg, i) => msg.role === 'user' ? (
-                <div key={i} className="flex justify-end fade-up">
-                  <div className="max-w-[75%]">
-                    <div className="px-4 py-3 rounded-[16px] rounded-br-[5px]
-                      bg-gradient-to-br from-[#1c2920] to-[#131a13]
-                      border border-emerald-900/25
-                      text-[13.5px] text-[#ddd] leading-[1.65]">
-                      {msg.content}
-                    </div>
-                    <p className="text-[9px] text-[#222] text-right mt-1 pr-1">
-                      {formatTime(msg.timestamp)}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div key={i} className="flex items-start gap-3 fade-up group">
-                  <ZenoxLogo size={26}/>
-                  <div className="flex-1 min-w-0 max-w-[80%]">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-[10px] font-bold text-emerald-500 tracking-wider">ZENOX</span>
-                      <span className="text-[9px] text-[#1f1f1f] font-mono">{backendModel}</span>
-                    </div>
-                    <div className="px-4 py-3 rounded-[16px] rounded-tl-[5px]
-                      bg-[#111] border border-[rgba(255,255,255,0.06)]
-                      text-[13.5px] text-[#ccc] leading-[1.7]">
-                      {msg.role === 'system' ? <span className="text-red-400 font-mono text-[12px]">{msg.content}</span> : renderMarkdown(msg.content)}
-                    </div>
-                    <div className="flex items-center gap-1 mt-1.5
-                      opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => copyMessage(msg.content, i)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg
-                          text-[10px] text-[#2a2a2a] hover:text-[#666]
-                          hover:bg-[rgba(255,255,255,0.04)] transition-all">
-                        {copiedIndex===i ? <Check size={10}/> : <Copy size={10}/>}
-                        {copiedIndex===i ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
+
+            {/* Divider */}
+            <div style={{borderTop:'1px solid var(--border)',marginBottom:20}}/>
+
+            {/* Status */}
+            <div style={{marginBottom:20}}>
+              <div style={{
+                fontSize:9, fontWeight:700, color:'var(--text4)',
+                textTransform:'uppercase', letterSpacing:'0.15em', marginBottom:12
+              }}>Status</div>
+              {[
+                ['Version', 'v17.0', 'var(--text1)'],
+                ['Built by', 'Awais', 'var(--green)'],
+                ['Backend', backendStatus==='online' ? 'Connected' : 'Offline',
+                  backendStatus==='online' ? 'var(--green)' : 'var(--red)'],
+                ['Model', backendModel, 'var(--text3)'],
+              ].map(([k,v,c]) => (
+                <div key={k} style={{
+                  display:'flex', justifyContent:'space-between',
+                  alignItems:'center', padding:'6px 0',
+                  borderBottom:'1px solid var(--border)'
+                }}>
+                  <span style={{fontSize:12,color:'var(--text3)'}}>{k}</span>
+                  <span style={{
+                    fontSize:12, color: c || 'var(--text1)',
+                    fontWeight: k==='Built by' ? 600 : 400,
+                    fontFamily: k==='Model'||k==='Version' ? 'monospace' : 'inherit',
+                    maxWidth:160, overflow:'hidden',
+                    textOverflow:'ellipsis', whiteSpace:'nowrap'
+                  }}>{v}</span>
                 </div>
               ))}
-              
-              {msgStatus === 'thinking' && (
-                <div className="flex items-start gap-3 fade-in">
-                  <ZenoxLogo size={26}/>
-                  <div className="px-4 py-3.5 rounded-[16px] rounded-tl-[5px]
-                    bg-[#111] border border-[rgba(255,255,255,0.06)] max-w-[180px]">
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-1">
-                        {[0,150,300].map(d => (
-                          <div key={d} style={{animationDelay:`${d}ms`, animation:'pulse-dot 1.2s ease infinite'} as any}
-                            className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
-                        ))}
-                      </div>
-                      <span className="text-[11px] text-[#444]">
-                        {msgStatus==='thinking' ? 'Thinking...' : 'Writing...'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {lastProject && agentMode && (
-                <div className="mb-4 p-5 rounded-2xl fade-up" style={{
-                  background: lastProject.language === 'research'
-                    ? 'linear-gradient(135deg,rgba(59,130,246,0.06),rgba(37,99,235,0.03))'
-                    : 'linear-gradient(135deg,rgba(0,212,170,0.06),rgba(0,168,130,0.03))',
-                  border: `1px solid ${lastProject.language === 'research' ? 'rgba(59,130,246,0.25)' : 'rgba(16,185,129,0.25)'}`
-                }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-5 h-5 rounded-full bg-emerald-500/20 
-                      flex items-center justify-center">
-                      <Check size={11} className="text-emerald-400"/>
-                    </div>
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                      {lastProject.deploy_url ? 'Deployed' : 
-                       lastProject.repo_url ? 'Saved to GitHub' : 'Complete'}
-                    </span>
-                  </div>
-                  
-                  <p className="text-[12.5px] text-[#888] mb-3 truncate font-medium">
-                    {lastProject.prompt}
-                  </p>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    {lastProject.code && lastProject.language !== 'research' && (
-                      <button onClick={() => {
-                        const ext = lastProject.language==='html'?'html':
-                                    lastProject.language==='python'?'py':'js';
-                        const blob = new Blob([lastProject.code],{type:'text/plain'});
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href=url; a.download=`zenox-project.${ext}`; a.click();
-                        URL.revokeObjectURL(url);
-                        showToast('Code downloaded','success');
-                      }}
-                        className="flex-1 py-2.5 text-[12px] font-bold
-                          bg-emerald-600 hover:bg-emerald-500 text-white
-                          rounded-[10px] transition-all flex items-center 
-                          justify-center gap-1.5
-                          shadow-[0_2px_12px_rgba(16,185,129,0.2)]">
-                        <Download size={13}/>
-                        Download Code
-                      </button>
-                    )}
-                    {lastProject.repo_url && (
-                      <a href={lastProject.repo_url} target="_blank" rel="noreferrer"
-                        className="px-3 py-2.5 text-[11px] font-medium
-                          bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)]
-                          text-[#666] hover:text-[#ccc] rounded-[10px] transition-all">
-                        GitHub →
-                      </a>
-                    )}
-                    {lastProject.deploy_url?.startsWith('http') && (
-                      <a href={lastProject.deploy_url} target="_blank" rel="noreferrer"
-                        className="px-3 py-2.5 text-[11px] font-medium
-                          bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)]
-                          text-[#666] hover:text-emerald-400 rounded-[10px] transition-all">
-                        Live →
-                      </a>
-                    )}
-                  </div>
-                  
-                  {lastProject.iterations > 1 && (
-                    <p className="text-[9px] text-[#2a2a2a] mt-2.5 font-mono">
-                      Self-corrected {lastProject.iterations}x · Quality: {lastProject.quality}
-                    </p>
-                  )}
-                  
-                  {/* Show research report inline if it is a research task */}
-                  {lastProject.language === 'research' && lastProject.code && (
-                    <div className="mt-4 pt-4 border-t border-[rgba(255,255,255,0.05)]">
-                      <p className="text-[9px] font-bold uppercase tracking-wider mb-2 text-[#888]">
-                        Research Report
-                      </p>
-                      <div className="text-[12px] leading-relaxed prose prose-invert max-w-none text-[#ccc] max-h-[300px] overflow-y-auto">
-                        {renderMarkdown(lastProject.code)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+            </div>
 
-        <div className="px-4 pb-4 pt-3 bg-[#0a0a0a] border-t border-[rgba(255,255,255,0.05)] flex-shrink-0 w-full max-w-4xl mx-auto md:bg-transparent md:border-transparent">
-          {(imagePreview || uploadedFile || isListening) && (
-            <div className="flex items-center gap-2 mb-2">
-              {imagePreview && (
-                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-[8px]
-                  bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)]">
-                  <img src={imagePreview} className="w-5 h-5 object-cover rounded-md" alt="preview"/>
-                  <span className="text-[10px] text-[#555]">Image</span>
-                  <button onClick={removeImage} className="text-[#333] hover:text-red-400 ml-0.5">
-                    <X size={10}/>
-                  </button>
-                </div>
-              )}
-              {isListening && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                  bg-red-500/10 border border-red-500/20">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping"/>
-                  <span className="text-[10px] text-red-400 font-medium">Listening...</span>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {msgStatus !== 'idle' && (
-            <div className="flex items-center gap-1.5 mb-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${
-                msgStatus==='sending'   ? 'bg-yellow-400 animate-pulse' :
-                msgStatus==='thinking'  ? 'bg-blue-400 animate-ping' :
-                                          'bg-emerald-400 animate-pulse'
-              }`}/>
-              <span className="text-[10px] text-[#333]">
-                {msgStatus==='sending'   ? 'Sending...' :
-                 msgStatus==='thinking'  ? 'Zenox is thinking...' :
-                                           'Writing response...'}
-              </span>
-            </div>
-          )}
-          
-          <div className={`flex items-end gap-2 px-3 py-3 rounded-[14px]
-            bg-[#111] transition-all duration-200 shadow-xl ${
-            inputValue.length > 0
-              ? 'border border-emerald-500/20 shadow-[0_0_0_3px_rgba(16,185,129,0.04)]'
-              : 'border border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.11)]'
-          }`}>
-            
-            <div className="flex items-center gap-0.5 self-end pb-0.5">
-              <button onClick={() => imageInputRef.current?.click()}
-                className="p-1.5 rounded-[7px] text-[#222]
-                  hover:text-[#666] hover:bg-[rgba(255,255,255,0.05)] transition-all"
-                title="Attach image">
-                <ImageIcon size={15}/>
-              </button>
-              <button onClick={() => fileInputRef.current?.click()}
-                className="p-1.5 rounded-[7px] text-[#222]
-                  hover:text-[#666] hover:bg-[rgba(255,255,255,0.05)] transition-all"
-                title="Attach file">
-                <FileText size={15}/>
-              </button>
-              <button onClick={toggleVoiceInput}
-                className={`p-1.5 rounded-[7px] transition-all ${
-                isListening 
-                  ? 'text-red-400 bg-red-500/10' 
-                  : 'text-[#222] hover:text-[#666] hover:bg-[rgba(255,255,255,0.05)]'
-              }`} title="Voice input">
-                {isListening ? <MicOff size={15}/> : <Mic size={15}/>}
-              </button>
-            </div>
-            
-            <textarea
-              ref={inputRef}
-              value={inputValue}
-              onChange={e => { setInputValue(e.target.value); setSuggestions([]); }}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                backendStatus==='offline' ? 'Backend offline...' :
-                agentMode ? 'Tell Zenox what to build...' :
-                'Ask Zenox anything...'
-              }
-              rows={1}
-              disabled={isLoading || backendStatus==='offline' || backendStatus==='checking'}
-              style={{resize:'none', maxHeight:'120px'}}
-              className="flex-1 bg-transparent text-[13.5px] text-[#e0e0e0]
-                placeholder:text-[#2a2a2a] outline-none leading-[1.5]
-                disabled:opacity-40 min-h-[22px] py-0.5"
-              onInput={e => {
-                const t = e.target as HTMLTextAreaElement;
-                t.style.height = 'auto';
-                t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+            {/* Clear button */}
+            <button
+              onClick={() => {
+                if (confirm('Clear all conversations?')) {
+                  setConversations([]); startNewChat();
+                  setSettingsOpen(false); showToast('All chats cleared');
+                }
               }}
-            />
-            
-            <div className="self-end pb-0.5">
-              {isLoading ? (
-                <button onClick={stopGeneration}
-                  className="w-8 h-8 flex items-center justify-center rounded-[9px]
-                    bg-red-500/10 border border-red-500/20 text-red-400
-                    hover:bg-red-500/20 transition-all">
-                  <Square size={13} fill="currentColor"/>
-                </button>
-              ) : (
-                <button
-                  onClick={() => handleSendWithMessage(inputValue)}
-                  disabled={!inputValue.trim() || isLoading || 
-                            backendStatus==='offline' || backendStatus==='checking'}
-                  className={`w-8 h-8 flex items-center justify-center 
-                    rounded-[9px] transition-all active:scale-95 ${
-                    inputValue.trim() && backendStatus==='online'
-                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_2px_8px_rgba(16,185,129,0.25)]'
-                      : 'bg-[rgba(255,255,255,0.04)] text-[#222] cursor-not-allowed'
-                  }`}>
-                  <ArrowUp size={15} strokeWidth={2.5}/>
-                </button>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between mt-2 px-0.5">
-            <span className="text-[9px] text-[#1a1a1a]">
-              Enter to send · Shift+Enter for new line
-            </span>
-            {inputValue.length > 100 && (
-              <span className={`text-[9px] font-mono ${
-                inputValue.length > 3000 ? 'text-red-400/70' : 'text-[#1a1a1a]'
-              }`}>
-                {inputValue.length.toLocaleString()}
-              </span>
-            )}
+              style={{
+                width:'100%', padding:'11px', borderRadius:12,
+                border:'1px solid rgba(239,68,68,0.25)',
+                background:'var(--red-bg)', color:'var(--red)',
+                fontSize:12, fontWeight:600, cursor:'pointer',
+                transition:'all 0.15s'
+              }}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(239,68,68,0.15)'}
+              onMouseLeave={e=>e.currentTarget.style.background='var(--red-bg)'}>
+              Clear All Conversations
+            </button>
           </div>
         </div>
-      </div>
+      )}
 
+      {/* ────── TOAST ────── */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1000]
-          pointer-events-none fade-up">
-          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-[12px]
-            text-[12px] font-medium shadow-2xl border backdrop-blur-xl ${
-            toast.type==='success' 
-              ? 'bg-emerald-950/90 border-emerald-700/30 text-emerald-200'
-              : toast.type==='error'
-              ? 'bg-red-950/90 border-red-700/30 text-red-200'
-              : 'bg-[#181818]/95 border-[rgba(255,255,255,0.1)] text-[#ccc]'
-          }`}>
-            {toast.type==='success' && <Check size={12} className="text-emerald-400"/>}
-            {toast.type==='error' && <AlertCircle size={12} className="text-red-400"/>}
+        <div style={{
+          position:'fixed', bottom:24, left:'50%',
+          transform:'translateX(-50%)', zIndex:3000,
+          pointerEvents:'none'
+        }} className="fade-up">
+          <div style={{
+            display:'flex', alignItems:'center', gap:8,
+            padding:'10px 18px', borderRadius:12, fontSize:12, fontWeight:500,
+            backdropFilter:'blur(16px)',
+            background: toast.type==='success'
+              ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+            border: `1px solid ${toast.type==='success'
+              ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            color: toast.type==='success' ? '#6ee7b7' : '#fca5a5',
+            boxShadow:'0 8px 32px rgba(0,0,0,0.3)'
+          }}>
+            {toast.type==='success' ? <Check size={13}/> : <AlertCircle size={13}/>}
             {toast.msg}
           </div>
         </div>
       )}
-
-      {settingsOpen && (
-        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center 
-          justify-center p-4 bg-black/70 backdrop-blur-sm"
-          onClick={() => setSettingsOpen(false)}>
-          <div className="bg-[#111] border border-[rgba(255,255,255,0.08)] 
-            rounded-[20px] w-full max-w-sm p-6 shadow-2xl"
-            onClick={e => e.stopPropagation()}>
-            
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-[15px] font-bold text-white">Settings</h2>
-              <button onClick={() => setSettingsOpen(false)}
-                className="p-1.5 rounded-lg text-[#444] hover:text-white
-                  hover:bg-[rgba(255,255,255,0.06)] transition-all">
-                <X size={15}/>
-              </button>
-            </div>
-            
-            <div className="space-y-5">
-              <div>
-                <p className="text-[10px] font-bold text-[#444] uppercase 
-                  tracking-widest mb-3">AI Mode</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setAgentMode(false)}
-                    className={`py-2.5 rounded-[10px] text-[12px] font-semibold
-                      border transition-all ${!agentMode 
-                        ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-300' 
-                        : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.07)] text-[#555]'}`}>
-                    💬 Chat
-                  </button>
-                  <button onClick={() => setAgentMode(true)}
-                    className={`py-2.5 rounded-[10px] text-[12px] font-semibold
-                      border transition-all ${agentMode 
-                        ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-300' 
-                        : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.07)] text-[#555]'}`}>
-                    🤖 Agent
-                  </button>
-                </div>
-              </div>
-              
-              <div className="border-t border-[rgba(255,255,255,0.05)] pt-5">
-                <p className="text-[10px] font-bold text-[#444] uppercase 
-                  tracking-widest mb-3">About</p>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-[12px] text-[#555]">Version</span>
-                    <span className="text-[12px] text-[#888] font-mono">v16.0</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[12px] text-[#555]">Built by</span>
-                    <span className="text-[12px] text-emerald-400 font-semibold">Awais</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[12px] text-[#555]">Backend</span>
-                    <span className={`text-[12px] font-semibold ${
-                      backendStatus==='online' ? 'text-emerald-400' : 'text-red-400'
-                    }`}>
-                      {backendStatus==='online' ? 'Connected' : 'Offline'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[12px] text-[#555]">Model</span>
-                    <span className="text-[12px] text-[#666] font-mono text-right max-w-[140px] truncate">
-                      {backendModel}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="border-t border-[rgba(255,255,255,0.05)] pt-5">
-                <button
-                  onClick={() => {
-                    if (confirm('Clear all conversations? This cannot be undone.')) {
-                      setConversations([]);
-                      startNewChat();
-                      setSettingsOpen(false);
-                      showToast('All chats cleared');
-                    }
-                  }}
-                  className="w-full py-2.5 text-[12px] font-semibold text-red-400
-                    border border-red-900/40 rounded-[10px] hover:bg-red-900/20
-                    transition-all">
-                  Clear All Conversations
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
-  );
-}
-
-function SidebarCmp({
-  sidebarOpen, setSidebarOpen, startNewChat, searchQuery, setSearchQuery,
-  filteredConversations, currentConversationId, loadConversation, deleteConversation,
-  getTimeAgo, setSettingsOpen
-}: any) {
-  return (
-    <aside className={`
-      fixed lg:static inset-y-0 left-0 z-40
-      flex flex-col w-[260px] 
-      bg-[#0a0a0a] border-r border-[rgba(255,255,255,0.05)]
-      transition-transform duration-300 ease-out
-      ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-    `}>
-      
-      <div className="flex items-center justify-between px-4 py-4
-        border-b border-[rgba(255,255,255,0.05)] flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <ZenoxLogo size={32}/>
-          <div>
-            <p className="text-[15px] font-bold text-white tracking-tight">
-              Zenox
-            </p>
-            <p className="text-[9px] text-[#333] uppercase tracking-[0.12em] font-medium">
-              by awais
-            </p>
-          </div>
-        </div>
-        <button onClick={() => setSidebarOpen(false)}
-          className="lg:hidden p-1.5 rounded-lg text-[#333] 
-            hover:text-[#888] hover:bg-[rgba(255,255,255,0.05)] transition-all">
-          <X size={15}/>
-        </button>
-      </div>
-      
-      <div className="p-3 border-b border-[rgba(255,255,255,0.05)] flex-shrink-0">
-        <button onClick={startNewChat}
-          className="w-full flex items-center justify-center gap-2
-            py-2.5 rounded-[12px] text-[13px] font-semibold
-            bg-emerald-600/90 hover:bg-emerald-500 text-white
-            transition-all active:scale-[0.98]
-            shadow-[0_2px_12px_rgba(16,185,129,0.2)]">
-          <Plus size={15}/>
-          New Chat
-        </button>
-      </div>
-      
-      <div className="px-3 py-2 flex-shrink-0">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-[10px]
-          bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)]">
-          <Search size={12} className="text-[#333] flex-shrink-0"/>
-          <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
-            placeholder="Search chats..." 
-            className="flex-1 bg-transparent text-[12px] text-[#888]
-              placeholder:text-[#2a2a2a] outline-none min-w-0"
-          />
-        </div>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-2 py-1">
-        {filteredConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10">
-            <MessageSquare size={20} className="text-[#1f1f1f] mb-2"/>
-            <p className="text-[11px] text-[#2a2a2a]">No chats yet</p>
-          </div>
-        ) : (
-          filteredConversations.map((conv: any) => {
-            const isActive = currentConversationId === conv.id;
-            return (
-              <button key={conv.id}
-                onClick={() => loadConversation(conv.id)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5
-                  rounded-[10px] text-left mb-0.5 transition-all group
-                  ${isActive 
-                    ? 'bg-[rgba(16,185,129,0.08)] border border-[rgba(16,185,129,0.15)]' 
-                    : 'hover:bg-[rgba(255,255,255,0.03)] border border-transparent'}`}>
-                <MessageSquare size={13} className={isActive ? 'text-emerald-500' : 'text-[#2a2a2a]'} />
-                <div className="flex-1 min-w-0">
-                  <p className={`text-[12px] truncate font-medium ${isActive ? 'text-white' : 'text-[#555]'}`}>
-                    {conv.title}
-                  </p>
-                  <p className="text-[9px] text-[#2a2a2a] mt-0.5">
-                    {getTimeAgo(conv.createdAt)}
-                  </p>
-                </div>
-                <button onClick={e=>{e.stopPropagation();deleteConversation(conv.id);}}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded
-                    text-[#2a2a2a] hover:text-red-400 transition-all">
-                  <X size={11}/>
-                </button>
-              </button>
-            );
-          })
-        )}
-      </div>
-      
-      <div className="p-3 border-t border-[rgba(255,255,255,0.05)] flex-shrink-0">
-        <button onClick={() => setSettingsOpen(true)}
-          className="w-full flex items-center gap-2.5 p-2.5 rounded-[10px]
-            hover:bg-[rgba(255,255,255,0.04)] transition-all group">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br 
-            from-emerald-600 to-teal-700 flex items-center justify-center 
-            text-white text-[13px] font-bold flex-shrink-0">
-            A
-          </div>
-          <div className="flex-1 min-w-0 text-left">
-            <p className="text-[12px] font-semibold text-[#ccc]">Awais</p>
-            <p className="text-[9px] text-[#333]">Personal Edition</p>
-          </div>
-          <Settings size={13} className="text-[#2a2a2a] group-hover:text-[#666] transition-colors"/>
-        </button>
-      </div>
-    </aside>
   );
 }
