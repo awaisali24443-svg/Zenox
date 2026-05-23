@@ -465,7 +465,7 @@ async def workspace_list(_=Depends(verify_api_key)):
 async def health():
     return {
         "status": "ok", 
-        "model": "gemini-3.1-pro-preview",
+        "model": "gemini-3-flash",
         "version": "16.0",
         "product": "Zenox"
     }
@@ -644,13 +644,14 @@ When the user asks you to build, write code, or create something:
     
     async def stream_generator():
         try:
-            async for chunk in client.aio.models.generate_content_stream(
-                model="gemini-3.1-pro-preview",
+            response = await client.aio.models.generate_content_stream(
+                model="gemini-3-flash",
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction
                 )
-            ):
+            )
+            async for chunk in response:
                 if chunk.text is not None:
                     yield chunk.text
         except Exception as e:
@@ -932,7 +933,7 @@ Return ONLY valid JSON."""
 
     try:
         plan_response = await client.aio.models.generate_content(
-            model="gemini-3.1-pro-preview",
+            model="gemini-3-flash",
             contents=plan_prompt
         )
         plan_text = plan_response.text or "{}"
@@ -1023,7 +1024,7 @@ No markdown code blocks. No explanations. Raw code only.
 Include clear comments in the code."""
 
         code_response = await client.aio.models.generate_content(
-            model="gemini-3.1-pro-preview",
+            model="gemini-3-flash",
             contents=reason_prompt
         )
         generated_code = (code_response.text or "").strip()
@@ -1110,7 +1111,7 @@ Return ONLY valid JSON."""
 
         try:
             obs_response = await client.aio.models.generate_content(
-                model="gemini-3.1-pro-preview",
+                model="gemini-3-flash",
                 contents=observe_prompt
             )
             obs_text = (obs_response.text or "{}").replace("```json","").replace("```","").strip()
@@ -1365,7 +1366,7 @@ async def agent_proactive(request: Request, _=Depends(verify_api_key)):
             http_options={'api_version': 'v1alpha'}
         )
         response = await client.aio.models.generate_content(
-            model="gemini-3.1-pro-preview",
+            model="gemini-3-flash",
             contents=f"""Based on this user's recent activity:
 {memories}
 
