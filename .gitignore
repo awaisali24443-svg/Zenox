@@ -4,7 +4,8 @@ dist/
 coverage/
 .DS_Store
 *.log
-.env*
+patch*.py
+patch*.cjs*
 !.env.example
 __pycache__/
 *.pyc

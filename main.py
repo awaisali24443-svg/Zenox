@@ -80,7 +80,7 @@ async def _tool_generate_code(prompt: str, language: str = "javascript") -> str:
     if not key: return "GEMINI_API_KEY not set"
     client = genai.Client(api_key=key, http_options={'api_version':'v1alpha'})
     r = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3-flash",
         contents=f"Write {language} code for: {prompt}\nReturn raw code only."
     )
     return r.text or ""
@@ -133,7 +133,7 @@ async def summarize_old_context(
     try:
         client = genai.Client(api_key=key, http_options={'api_version':'v1alpha'})
         r = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash",
             contents=f"""Summarize this conversation history in 3-5 sentences.
 Focus on: key topics discussed, decisions made, code written, user preferences shown.
 Be specific and factual.
@@ -171,7 +171,7 @@ async def call_llm_with_fallback(
                 )
             r = await asyncio.wait_for(
                 client.aio.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-3-flash",
                     contents=contents,
                     config=config
                 ),
@@ -304,8 +304,8 @@ def verify_api_key(x_api_key: str = Header(None)):
 async def health():
     return {
         "status": "ok", 
-        "model": "gemini-2.5-flash",
-        "version": "15.0",
+        "model": "gemini-3.1-pro-preview",
+        "version": "16.0",
         "product": "Zenox"
     }
 
@@ -484,7 +484,7 @@ When the user asks you to build, write code, or create something:
     async def stream_generator():
         try:
             async for chunk in client.aio.models.generate_content_stream(
-                model="gemini-2.5-flash",
+                model="gemini-3.1-pro-preview",
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction
@@ -539,7 +539,7 @@ async def classify_task(request: Request, _=Depends(verify_api_key)):
         system_instruction = "You classify user intents. If the user wants to just chat, learn, explain concepts, summarize, or ask general questions, return type 'chat' and an empty steps array. If they want to build, automate, code, fix code, or execute an action, return type as one of ['website', 'python_script', 'api', 'component', 'script', 'general_agent'], the appropriate language, and list 3-5 logical execution steps."
         
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash",
             contents=f"User Prompt:\n{prompt}",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
@@ -640,7 +640,7 @@ No markdown blocks, no explanations, just raw code.
 Include comments explaining what each section does."""
         
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash",
             contents=f"{system}\n\nTask: {prompt}"
         )
         
@@ -761,7 +761,7 @@ Return ONLY valid JSON."""
 
     try:
         plan_response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.1-pro-preview",
             contents=plan_prompt
         )
         plan_text = plan_response.text or "{}"
@@ -807,7 +807,7 @@ No markdown code blocks. No explanations. Raw code only.
 Include clear comments in the code."""
 
         code_response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.1-pro-preview",
             contents=reason_prompt
         )
         generated_code = (code_response.text or "").strip()
@@ -894,7 +894,7 @@ Return ONLY valid JSON."""
 
         try:
             obs_response = await client.aio.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.1-pro-preview",
                 contents=observe_prompt
             )
             obs_text = (obs_response.text or "{}").replace("```json","").replace("```","").strip()
@@ -1135,7 +1135,7 @@ async def agent_proactive(request: Request, _=Depends(verify_api_key)):
             http_options={'api_version': 'v1alpha'}
         )
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.1-pro-preview",
             contents=f"""Based on this user's recent activity:
 {memories}
 
@@ -1460,7 +1460,7 @@ async def generate_title(request: Request, _=Depends(verify_api_key)):
     client = genai.Client(api_key=key, http_options={'api_version': 'v1alpha'})
     try:
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash",
             contents=f"In 4-6 words, create a title for a conversation starting with:\n'{message}'\nReturn ONLY the title. No quotes. No punctuation."
         )
         return {"title": response.text.strip()}
@@ -1478,7 +1478,7 @@ async def get_suggestions(request: Request, _=Depends(verify_api_key)):
     client = genai.Client(api_key=key, http_options={'api_version':'v1alpha'})
     try:
         r = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash",
             contents=f"""Based on this Q&A:
 Q: {original}
 A: {last_response}
