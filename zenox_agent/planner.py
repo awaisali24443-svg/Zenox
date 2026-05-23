@@ -3,7 +3,7 @@ import json
 async def generate_plan(prompt, client):
     instruction = "You are an autonomous agent planner. Generate a JSON list of steps to accomplish the task. Return ONLY a valid JSON array of strings."
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3-flash",
         contents=prompt,
         config={"system_instruction": instruction}
     )

@@ -12,7 +12,7 @@ async def generate_code(prompt, language, client, task_type):
         f"Write a complete Python script with comments. Task: {prompt}" if task_type in ("python_script", "script") else
         f"Write complete JavaScript code with comments. Task: {prompt}"
     )
-    res = await client.aio.models.generate_content(model="gemini-2.5-flash", contents=code_prompt)
+    res = await client.aio.models.generate_content(model="gemini-3-flash", contents=code_prompt)
     code = res.text or ""
     for fence in ["```html","```python","```javascript","```js","```py","```"]:
         code = code.replace(fence, "")
