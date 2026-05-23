@@ -553,9 +553,12 @@ export default function App() {
               )}
               
               {lastProject && agentMode && (
-                <div className="mb-4 p-4 rounded-[18px] fade-up
-                  bg-gradient-to-b from-[#0d1a10] to-[#0a0f0a]
-                  border border-emerald-900/25">
+                <div className="mb-4 p-5 rounded-2xl fade-up" style={{
+                  background: lastProject.language === 'research'
+                    ? 'linear-gradient(135deg,rgba(59,130,246,0.06),rgba(37,99,235,0.03))'
+                    : 'linear-gradient(135deg,rgba(0,212,170,0.06),rgba(0,168,130,0.03))',
+                  border: `1px solid ${lastProject.language === 'research' ? 'rgba(59,130,246,0.25)' : 'rgba(16,185,129,0.25)'}`
+                }}>
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-5 h-5 rounded-full bg-emerald-500/20 
                       flex items-center justify-center">
@@ -572,7 +575,7 @@ export default function App() {
                   </p>
                   
                   <div className="flex flex-wrap gap-2">
-                    {lastProject.code && (
+                    {lastProject.code && lastProject.language !== 'research' && (
                       <button onClick={() => {
                         const ext = lastProject.language==='html'?'html':
                                     lastProject.language==='python'?'py':'js';
@@ -614,6 +617,18 @@ export default function App() {
                     <p className="text-[9px] text-[#2a2a2a] mt-2.5 font-mono">
                       Self-corrected {lastProject.iterations}x · Quality: {lastProject.quality}
                     </p>
+                  )}
+                  
+                  {/* Show research report inline if it is a research task */}
+                  {lastProject.language === 'research' && lastProject.code && (
+                    <div className="mt-4 pt-4 border-t border-[rgba(255,255,255,0.05)]">
+                      <p className="text-[9px] font-bold uppercase tracking-wider mb-2 text-[#888]">
+                        Research Report
+                      </p>
+                      <div className="text-[12px] leading-relaxed prose prose-invert max-w-none text-[#ccc] max-h-[300px] overflow-y-auto">
+                        {renderMarkdown(lastProject.code)}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

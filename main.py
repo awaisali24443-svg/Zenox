@@ -16,6 +16,74 @@ from google.genai import types
 import httpx
 from pydantic import BaseModel
 
+import sqlite3
+import threading
+
+# SQLite database for task persistence
+TASKS_DB = "/tmp/zenox_tasks.db"
+_db_lock = threading.Lock()
+
+def init_db():
+    with _db_lock:
+        conn = sqlite3.connect(TASKS_DB)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                status TEXT,
+                prompt TEXT,
+                result TEXT,
+                error TEXT,
+                created_at REAL,
+                updated_at REAL
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+def save_task_to_db(task_id: str, data: dict):
+    with _db_lock:
+        try:
+            conn = sqlite3.connect(TASKS_DB)
+            conn.execute("""
+                INSERT OR REPLACE INTO tasks 
+                (id, status, prompt, result, error, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                task_id,
+                data.get("status", "unknown"),
+                data.get("prompt", ""),
+                json.dumps(data.get("result")) if data.get("result") else None,
+                data.get("error"),
+                data.get("created_at", __import__('time').time()),
+                __import__('time').time()
+            ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Save error: {e}")
+
+def get_task_from_db(task_id: str) -> dict | None:
+    with _db_lock:
+        try:
+            conn = sqlite3.connect(TASKS_DB)
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            conn.close()
+            if row:
+                return {
+                    "id": row[0], "status": row[1], "prompt": row[2],
+                    "result": json.loads(row[3]) if row[3] else None,
+                    "error": row[4], "created_at": row[5]
+                }
+            return None
+        except Exception as e:
+            print(f"[DB] Get error: {e}")
+            return None
+
+WORKSPACE = "/tmp/zenox_workspace"
+pathlib.Path(WORKSPACE).mkdir(exist_ok=True)
+
 import zenox_agent.planner as planner
 from zenox_agent.memory import memory
 from zenox_agent.tools import registry
@@ -65,12 +133,41 @@ async def web_search(query: str) -> str:
             if isinstance(topic, dict) and topic.get("Text"):
                 results.append(f"• {topic['Text']}")
         
-        if results:
-            return "Web search results:\n" + "\n".join(results)
-        return ""
+        links = []
+        for topic in data.get("RelatedTopics", [])[:5]:
+            if isinstance(topic, dict) and topic.get("FirstURL"):
+                links.append(topic["FirstURL"])
+        
+        return {
+            "summary": "\n".join(results) if results else "",
+            "links": links[:3]
+        }
     except Exception as e:
         print(f"[SEARCH] Error: {e}")
-        return ""
+        return {"summary": "", "links": []}
+
+async def read_url(url: str, max_chars: int = 8000) -> str:
+    """
+    Read any website as clean text using Jina AI Reader.
+    Free tier: 1 million tokens per month.
+    No API key required for basic use.
+    """
+    try:
+        jina_url = f"https://r.jina.ai/{url}"
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.get(
+                jina_url,
+                headers={
+                    "User-Agent": "Zenox/1.0",
+                    "Accept": "text/plain"
+                }
+            )
+            if r.status_code == 200:
+                text = r.text[:max_chars]
+                return text
+            return f"Could not read {url} (status {r.status_code})"
+    except Exception as e:
+        return f"Error reading {url}: {str(e)[:100]}"
 
 async def _tool_web_search(query: str) -> str:
     return await web_search(query)
@@ -277,6 +374,7 @@ async def cleanup_old_tasks():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_db()
     asyncio.create_task(ping_services())
     asyncio.create_task(cleanup_old_tasks())
     yield
@@ -299,6 +397,69 @@ def verify_api_key(x_api_key: str = Header(None)):
     # In production, key must match SYNOD_API_KEY exactly
     if x_api_key != expected:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+@app.post("/api/agent/read-url")
+async def agent_read_url(
+    request: Request, _=Depends(verify_api_key)
+):
+    data = await request.json()
+    url = data.get("url", "")
+    max_chars = data.get("max_chars", 8000)
+    
+    if not url:
+        raise HTTPException(400, "url required")
+    
+    # Basic URL validation
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    
+    result = await read_url(url, max_chars)
+    return {"url": url, "content": result, "length": len(result)}
+
+@app.post("/api/agent/workspace/write")
+async def workspace_write(request: Request, _=Depends(verify_api_key)):
+    data = await request.json()
+    filename = data.get("filename", "output.txt")
+    content = data.get("content", "")
+    
+    # Security: no path traversal
+    filename = pathlib.Path(filename).name
+    filepath = pathlib.Path(WORKSPACE) / filename
+    
+    try:
+        filepath.write_text(content)
+        return {
+            "success": True,
+            "filename": filename,
+            "size": len(content),
+            "path": str(filepath)
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Write failed: {str(e)}")
+
+@app.get("/api/agent/workspace/read/{filename}")
+async def workspace_read(filename: str, _=Depends(verify_api_key)):
+    filename = pathlib.Path(filename).name
+    filepath = pathlib.Path(WORKSPACE) / filename
+    if not filepath.exists():
+        raise HTTPException(404, "File not found")
+    return {
+        "filename": filename,
+        "content": filepath.read_text(errors="replace")[:50000]
+    }
+
+@app.get("/api/agent/workspace/list")
+async def workspace_list(_=Depends(verify_api_key)):
+    files = []
+    for f in pathlib.Path(WORKSPACE).iterdir():
+        if f.is_file():
+            files.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "modified": f.stat().st_mtime
+            })
+    files.sort(key=lambda x: x["modified"], reverse=True)
+    return {"files": files[:20]}
 
 @app.get("/api/health")
 async def health():
@@ -554,7 +715,10 @@ async def classify_task(request: Request, _=Depends(verify_api_key)):
         print("Classification error, falling back to heuristics:", e)
         prompt_lower = prompt.lower()
         
-        if any(w in prompt_lower for w in ["website","webpage","html","landing page","portfolio","blog"]):
+        if any(w in prompt_lower for w in ["research", "find information", "look up", "what is", "browse", "visit", "read the website", "check the site", "analyze", "compare websites", "scrape"]):
+            task_type = "research"
+            language = "python"
+        elif any(w in prompt_lower for w in ["website","webpage","html","landing page","portfolio","blog"]):
             task_type = "website"
             language = "html"
         elif any(w in prompt_lower for w in ["python","flask","django","data analysis","csv","pandas"]):
@@ -576,6 +740,13 @@ async def classify_task(request: Request, _=Depends(verify_api_key)):
             language = "javascript"
         
         steps_map = {
+            "research": [
+                "Understanding research goal",
+                "Searching the web",
+                "Reading relevant pages",
+                "Synthesizing findings",
+                "Writing research report"
+            ],
             "website": [
                 "Analyzing requirements",
                 "Designing layout and structure",
@@ -774,6 +945,35 @@ Return ONLY valid JSON."""
         plan = {"goal": prompt, "steps": ["Generate solution", "Test", "Save"]}
         _upd("Planning", "done", "Plan created (simplified)")
     
+    # ── RESEARCH PHASE (only for research tasks) ──────────────
+    research_context = ""
+    if task_type == "research":
+        _upd("Searching web", "running", "Finding relevant sources...")
+        
+        try:
+            # Step 1: Search for the topic
+            search_result = await web_search(prompt)
+            if isinstance(search_result, dict):
+                summary = search_result.get("summary", "")
+                links = search_result.get("links", [])
+            else:
+                summary = str(search_result)
+                links = []
+            
+            research_context = f"Web Search Summary:\n{summary}\n\n"
+            
+            # Step 2: Read top 2-3 pages for depth
+            if links:
+                _upd("Reading sources", "running", f"Reading {len(links[:2])} pages...")
+                for link in links[:2]:
+                    page_content = await read_url(link, 3000)
+                    research_context += f"\nFrom {link}:\n{page_content[:2000]}\n\n"
+            
+            _upd("Searching web", "done", f"Read {len(links[:2])} sources")
+            
+        except Exception as e:
+            _upd("Searching web", "done", f"Search completed with notes: {str(e)[:50]}")
+
     # ── PHASE 1-N: COGNITIVE LOOP ─────────────────────────────────────
     while iteration < MAX_ITERATIONS and not task_complete:
         iteration += 1
@@ -792,7 +992,23 @@ Return ONLY valid JSON."""
                 obs_context += f"Action taken: {obs.get('reflection','none')}\n"
         
         # ── REASON: What should I generate this iteration? ────────────
-        reason_prompt = f"""You are Zenox, an autonomous AI agent.
+        if task_type == "research":
+            reason_prompt = f"""You are a research analyst. 
+
+Research Goal: {prompt}
+
+Source Material:
+{research_context[:6000]}
+{obs_context}
+
+{"FIRST ATTEMPT: Generate the best possible solution." if iteration == 1 else "RETRY: Improve based on the problems observed above."}
+
+Write a comprehensive, well-structured research report.
+Use markdown formatting with headers, bullet points, and key findings.
+Be specific, cite what you found, and give a clear conclusion.
+Do NOT write code. Write the report."""
+        else:
+            reason_prompt = f"""You are Zenox, an autonomous AI agent.
 
 TASK: {prompt}
 LANGUAGE: {language}
@@ -998,6 +1214,11 @@ Return ONLY valid JSON."""
         except Exception as ex:
             _upd("Deploying", "done", f"Skipped: {str(ex)[:40]}")
     
+    ext = "md" if task_type == "research" else ("html" if task_type == "website" else "py" if task_type == "python_script" else "js")
+    save_filename = f"zenox-{task_id[:8]}.{ext}"
+    workspace_path = pathlib.Path(WORKSPACE) / save_filename
+    workspace_path.write_text(final_code, encoding="utf-8", errors="replace")
+
     try:
         memory.add_episode(
             task_id=task_id,
@@ -1032,15 +1253,24 @@ Return ONLY valid JSON."""
         "repo_url": repo_url, "deploy_url": deploy_url,
         "prompt": prompt, "project_id": pid,
         "iterations": iteration,
-        "quality": working_memory[-1].get("quality","acceptable") if working_memory else "acceptable"
+        "quality": working_memory[-1].get("quality","acceptable") if working_memory else "acceptable",
+        "workspace_file": save_filename
     }
+
+    # Save to persistent SQLite as well
+    save_task_to_db(task_id, _background_tasks[task_id])
 
 @app.get("/api/agent/task/{task_id}")
 async def get_background_task(task_id: str, _=Depends(verify_api_key)):
+    # Check in-memory first (fast)
     task = _background_tasks.get(task_id)
-    if not task:
-        raise HTTPException(404, "Task not found")
-    return task
+    if task:
+        return task
+    # Fall back to SQLite (survives restarts)
+    task = get_task_from_db(task_id)
+    if task:
+        return task
+    raise HTTPException(404, "Task not found")
 
 @app.delete("/api/agent/task/{task_id}")
 async def cancel_background_task(task_id: str, _=Depends(verify_api_key)):
