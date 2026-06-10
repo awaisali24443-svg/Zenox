@@ -2,8 +2,10 @@
   "name": "ai-studio-app",
   "version": "1.0.0",
   "scripts": {
-    "dev": "cd frontend && npm install && npm run dev",
+    "dev": "npm run start:backend & npm run start:frontend",
+    "start:frontend": "cd frontend && npm install && npm run dev",
+    "start:backend": "cd backend && pip install -r requirements.txt && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
     "build": "cd frontend && npm install && npm run build",
-    "start": "cd frontend && npm run dev"
+    "start": "npm run dev"
   }
 }
