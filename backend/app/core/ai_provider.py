@@ -1,5 +1,5 @@
 import asyncio
-from app.global.config import GEMINI_API_KEY, GROQ_API_KEY
+from app.core.config import GEMINI_API_KEY, GROQ_API_KEY
 import google.generativeai as genai
 from groq import Groq
 

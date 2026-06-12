@@ -1,4 +1,4 @@
-from app.global.database import supabase
+from app.core.database import supabase
 
 async def create_session(user_id: str, title: str) -> dict:
     try:
