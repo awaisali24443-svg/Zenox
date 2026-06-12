@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from app.modules.chat.sessions.schema import CreateSessionRequest, SessionResponse
 from app.modules.chat.sessions.service import create_session, get_sessions
-from app.core.auth_middleware import get_current_user
+from app.global.auth_middleware import get_current_user
 
 sessions_router = APIRouter()
 

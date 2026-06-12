@@ -1,4 +1,4 @@
-from app.core.database import supabase
+from app.global.database import supabase
 
 async def login_user(email: str, password: str) -> dict:
     try:

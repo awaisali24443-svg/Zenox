@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from app.modules.chat.messages.schema import SendMessageRequest, SendMessageResponse
 from app.modules.chat.messages.service import send_message
-from app.core.auth_middleware import get_current_user
+from app.global.auth_middleware import get_current_user
 
 messages_router = APIRouter()
 

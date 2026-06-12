@@ -1,5 +1,5 @@
-from app.core.ai_provider import call_ai
-from app.core.database import supabase
+from app.global.ai_provider import call_ai
+from app.global.database import supabase
 
 async def send_message(
     session_id: str,

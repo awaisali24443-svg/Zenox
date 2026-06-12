@@ -23,7 +23,7 @@ async def logout():
         message=result["message"]
     )
 
-from app.core.auth_middleware import get_current_user
+from app.global.auth_middleware import get_current_user
 
 @login_router.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
