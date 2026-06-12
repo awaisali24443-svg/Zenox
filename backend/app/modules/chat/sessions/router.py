@@ -17,3 +17,12 @@ async def handle_create_session(request: CreateSessionRequest, user: dict = Depe
 async def handle_get_sessions(user: dict = Depends(get_current_user)):
     sessions = await get_sessions(user.get("id"))
     return [SessionResponse(**s) for s in sessions]
+
+@sessions_router.get("/chat/sessions/{session_id}/messages")
+async def handle_get_messages(
+    session_id: str,
+    user: dict = Depends(get_current_user)
+):
+    from app.modules.chat.sessions.service import get_messages
+    messages = await get_messages(session_id)
+    return {"messages": messages}

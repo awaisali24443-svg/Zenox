@@ -25,42 +25,81 @@ function MainApp() {
   ]);
 
   const handleSend = async (text: string) => {
-    const userMessage = {
+    const userMessage: Message = {
       id: Date.now().toString(),
-      role: 'user' as const,
+      role: 'user',
       content: text,
       created_at: new Date().toISOString()
     };
-    
-    setMessages(prev => [...prev, userMessage]);
-    setStatusUpdates(prev => [...prev, { text: 'Thinking...', type: 'info' }]);
-    
+  
+    const loadingMessage: Message = {
+      id: 'loading',
+      role: 'assistant',
+      content: '...',
+      created_at: new Date().toISOString()
+    };
+  
+    setMessages(prev => [...prev, userMessage, loadingMessage]);
+    setStatusUpdates(prev => [
+      ...prev, 
+      { text: 'Thinking...', type: 'info' }
+    ]);
+  
     const history = messages.map(m => ({
       role: m.role,
       content: m.content
     }));
-    
+  
     try {
       const res = await sendMessage(
         currentSessionId || 'default',
         text,
         history
       );
-      
-      if (res.success) {
-        const aiMessage = {
+  
+      if (res && res.success) {
+        const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
-          role: 'assistant' as const,
+          role: 'assistant',
           content: res.content,
           created_at: new Date().toISOString()
         };
-        setMessages(prev => [...prev, aiMessage]);
-        setStatusUpdates(prev => [...prev, { text: 'Response received', type: 'success' }]);
+        setMessages(prev => 
+          prev.filter(m => m.id !== 'loading').concat(aiMessage)
+        );
+        setStatusUpdates(prev => [
+          ...prev, 
+          { text: 'Response received', type: 'success' }
+        ]);
       } else {
-        setStatusUpdates(prev => [...prev, { text: 'AI error: ' + res.message, type: 'error' }]);
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: 'Error: ' + (res?.message || 'Something went wrong. Please try again.'),
+          created_at: new Date().toISOString()
+        };
+        setMessages(prev => 
+          prev.filter(m => m.id !== 'loading').concat(errorMessage)
+        );
+        setStatusUpdates(prev => [
+          ...prev, 
+          { text: 'Error: ' + (res?.message || 'Unknown error'), type: 'error' }
+        ]);
       }
     } catch (err: any) {
-      setStatusUpdates(prev => [...prev, { text: 'Request failed', type: 'error' }]);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Connection failed. Please check your internet and try again.',
+        created_at: new Date().toISOString()
+      };
+      setMessages(prev => 
+        prev.filter(m => m.id !== 'loading').concat(errorMessage)
+      );
+      setStatusUpdates(prev => [
+        ...prev, 
+        { text: 'Connection failed', type: 'error' }
+      ]);
     }
   };
 

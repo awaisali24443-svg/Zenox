@@ -15,3 +15,12 @@ async def get_sessions(user_id: str) -> list:
         return res.data if res.data else []
     except Exception as e:
         return []
+
+async def get_messages(session_id: str) -> list:
+    try:
+        res = supabase.table("messages").select("*").eq(
+            "session_id", session_id
+        ).order("created_at", asc=True).execute()
+        return res.data if res.data else []
+    except Exception as e:
+        return []

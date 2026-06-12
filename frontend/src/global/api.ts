@@ -10,14 +10,35 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
-async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
+async function fetchWithAuth(
+  endpoint: string, 
+  options: RequestInit = {}
+) {
   const token = localStorage.getItem('zenox_token');
   const headers = new Headers(options.headers || {});
+  headers.set('Content-Type', 'application/json');
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
   options.headers = headers;
+
   const res = await fetch(`${BACKEND_URL}${endpoint}`, options);
+
+  if (res.status === 401) {
+    localStorage.removeItem('zenox_token');
+    localStorage.removeItem('zenox_user_id');
+    window.location.reload();
+    return { success: false, message: 'Session expired. Please log in again.' };
+  }
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    return { 
+      success: false, 
+      message: errorData.detail || `Server error: ${res.status}` 
+    };
+  }
+
   return res.json();
 }
 
@@ -67,6 +88,10 @@ export async function createSession(title: string) {
 
 export async function getSessions() {
   return fetchWithAuth('/chat/sessions');
+}
+
+export async function getMessages(sessionId: string) {
+  return fetchWithAuth(`/chat/sessions/${sessionId}/messages`);
 }
 
 export { BACKEND_URL };

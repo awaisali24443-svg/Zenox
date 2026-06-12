@@ -1,3 +1,4 @@
+import asyncio
 from app.core.database import supabase
 
 async def login_user(email: str, password: str) -> dict:
@@ -24,9 +25,15 @@ async def logout_user() -> dict:
 
 async def get_current_user_from_token(token: str) -> dict:
     try:
-        res = supabase.auth.get_user(token)
+        def validate():
+            return supabase.auth.get_user(token)
+        res = await asyncio.to_thread(validate)
         if res.user:
-            return {"success": True, "user": res.user.model_dump()}
+            user_data = {
+                "id": str(res.user.id),
+                "email": res.user.email,
+            }
+            return {"success": True, "user": user_data}
         return {"success": False, "message": "User not found"}
     except Exception as e:
         return {"success": False, "message": str(e)}
