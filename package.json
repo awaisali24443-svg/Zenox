@@ -7,5 +7,10 @@
     "start:backend": "cd backend && pip install -r requirements.txt && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
     "build": "cd frontend && npm install && npm run build",
     "start": "npm run dev"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
   }
 }
