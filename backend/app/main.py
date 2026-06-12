@@ -2,8 +2,10 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.modules.registry import master_router
 
 app = FastAPI()
 
@@ -17,6 +19,8 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+app.include_router(master_router)
+
 @app.get("/")
 def health():
-    return { "status": "alive" }
+    return {"status": "alive"}
