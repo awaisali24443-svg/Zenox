@@ -52,7 +52,7 @@ function MainApp() {
   
     try {
       const res = await sendMessage(
-        currentSessionId || 'default',
+        currentSessionId || '',
         text,
         history
       );
