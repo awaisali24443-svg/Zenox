@@ -1,18 +1,19 @@
 import asyncio
+import time
 from app.core.config import GEMINI_API_KEY, GROQ_API_KEY
 import google.generativeai as genai
 from groq import Groq
 
 GEMINI_MODELS = [
+    "gemini-2.0-flash-exp",
     "gemini-2.0-flash",
+    "gemini-1.5-flash-8b",
     "gemini-1.5-flash",
-    "gemini-2.5-flash-preview-05-20",
-    "gemini-1.5-pro",
 ]
 
 GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
     "mixtral-8x7b-32768",
 ]
 
@@ -70,22 +71,60 @@ async def call_ai(
     if GEMINI_API_KEY:
         for model_name in GEMINI_MODELS:
             try:
-                response = await _try_gemini(model_name, messages, system_prompt, max_tokens)
-                print(f"[AI Fallback] Successfully used Gemini model: {model_name}")
-                return response
+                print(f"[AI] Trying {model_name}...")
+                start = time.time()
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        _call_gemini_sync,
+                        model_name,
+                        messages,
+                        system_prompt,
+                        max_tokens
+                    ),
+                    timeout=10.0
+                )
+                elapsed = round(time.time() - start, 2)
+                print(f"[AI] {model_name} succeeded in {elapsed}s")
+                return result
+            except asyncio.TimeoutError:
+                print(f"[AI] {model_name} timed out after 10s")
+                continue
             except Exception as e:
-                print(f"[AI Fallback] Gemini model {model_name} failed: {e}")
-                
+                print(f"[AI] {model_name} failed: {type(e).__name__}: {e}")
+                continue
+    else:
+        print("[AI] No Gemini key found in environment")
+
     if GROQ_API_KEY:
         for model_name in GROQ_MODELS:
             try:
-                response = await _try_groq(model_name, messages, system_prompt, max_tokens)
-                print(f"[AI Fallback] Successfully used Groq model: {model_name}")
-                return response
+                print(f"[AI] Trying Groq {model_name}...")
+                start = time.time()
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        _call_groq_sync,
+                        model_name,
+                        messages,
+                        system_prompt,
+                        max_tokens
+                    ),
+                    timeout=10.0
+                )
+                elapsed = round(time.time() - start, 2)
+                print(f"[AI] Groq {model_name} succeeded in {elapsed}s")
+                return result
+            except asyncio.TimeoutError:
+                print(f"[AI] Groq {model_name} timed out after 10s")
+                continue
             except Exception as e:
-                print(f"[AI Fallback] Groq model {model_name} failed: {e}")
+                print(f"[AI] Groq {model_name} failed: {type(e).__name__}: {e}")
+                continue
+    else:
+        print("[AI] No Groq key found in environment")
 
-    raise Exception("All AI models unavailable. Please try again later.")
+    raise Exception(
+        "All AI models unavailable. Please try again later."
+    )
 
 def get_available_providers() -> list[str]:
     providers = []

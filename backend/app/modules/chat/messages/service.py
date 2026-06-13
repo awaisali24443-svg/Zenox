@@ -34,11 +34,13 @@ async def send_message(
                         "content": response
                     }
                 ]).execute()
-            await asyncio.to_thread(insert_messages)
-        except Exception as db_error:
-            # DB failed but we still have the AI response
-            # Log it but do not crash
-            print(f"[DB Warning] Could not save messages: {db_error}")
+            def run_db_insert():
+                try:
+                    insert_messages()
+                except Exception as db_error:
+                    print(f"[DB Warning] Could not save messages: {db_error}")
+            
+            asyncio.create_task(asyncio.to_thread(run_db_insert))
 
         return {"success": True, "content": response}
 
