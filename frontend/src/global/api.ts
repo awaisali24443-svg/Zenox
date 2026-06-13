@@ -22,7 +22,25 @@ async function fetchWithAuth(
   }
   options.headers = headers;
 
-  const res = await fetch(`${BACKEND_URL}${endpoint}`, options);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+  let res;
+  try {
+    res = await fetch(`${BACKEND_URL}${endpoint}`, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      return {
+        success: false,
+        message: 'Request timed out after 90 seconds. Please try again.'
+      };
+    }
+    throw error;
+  }
 
   if (res.status === 401) {
     localStorage.removeItem('zenox_token');

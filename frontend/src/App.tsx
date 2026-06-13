@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { theme } from './global/theme';
 import { StoreProvider, useStore } from './global/store';
 import { Login, Register } from './modules/auth/auth.index';
@@ -10,6 +10,9 @@ import './index.css';
 function MainApp() {
   const { isLoggedIn, currentSessionId, setCurrentSession, logout } = useStore();
   const [showRegister, setShowRegister] = useState(false);
+  
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingTimer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const [messages, setMessages] = useState<Message[]>([
     { id: '1', role: 'assistant', content: 'Hello! How can I help you today?', created_at: new Date().toISOString() }
@@ -44,6 +47,22 @@ function MainApp() {
       ...prev, 
       { text: 'Thinking...', type: 'info' }
     ]);
+  
+    const loadingTimer = setTimeout(() => {
+      setStatusUpdates(prev => [...prev, {
+        text: 'First message may take up to 60 seconds on free hosting...',
+        type: 'info'
+      }]);
+    }, 8000);
+    loadingTimerRef.current = loadingTimer;
+
+    const loadingTimer2 = setTimeout(() => {
+      setStatusUpdates(prev => [...prev, {
+        text: 'Still working, please do not refresh...',
+        type: 'info'
+      }]);
+    }, 20000);
+    loadingTimer2Ref.current = loadingTimer2;
   
     const history = messages.map(m => ({
       role: m.role,
@@ -101,6 +120,9 @@ function MainApp() {
         { text: 'Connection failed', type: 'error' }
       ]);
     }
+
+    clearTimeout(loadingTimer);
+    clearTimeout(loadingTimer2);
   };
 
   if (!isLoggedIn) {
