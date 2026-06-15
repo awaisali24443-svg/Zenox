@@ -25,11 +25,13 @@ async def send_message(
                 return supabase.table("messages").insert([
                     {
                         "session_id": session_id,
+                        "user_id": user_id,
                         "role": "user",
                         "content": content
                     },
                     {
                         "session_id": session_id,
+                        "user_id": user_id,
                         "role": "assistant",
                         "content": response
                     }
